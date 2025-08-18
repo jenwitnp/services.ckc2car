@@ -9,6 +9,8 @@ const config = {
   channelSecret: process.env.LINE_ADMIN_CHANNEL_SECRET,
 };
 
+console.log(config);
+
 const client = new Client(config);
 
 // Configuration for admin response behavior
