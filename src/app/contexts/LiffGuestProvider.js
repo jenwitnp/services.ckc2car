@@ -63,14 +63,14 @@ export function LiffGuestProvider({ children }) {
                 // ✅ Small delay before redirect
                 setTimeout(() => {
                   router.replace(storedUrl);
-                }, 500);
+                }, 200);
                 return; // Exit early
               } else {
                 // No stored URL, redirect to cars
                 console.log("[LIFF Guest] No stored URL, redirecting to cars");
                 setTimeout(() => {
                   router.replace("/cars");
-                }, 500);
+                }, 200);
                 return; // Exit early
               }
             } else {
@@ -98,7 +98,7 @@ export function LiffGuestProvider({ children }) {
               const storedUrl = sessionStorage.getItem("liff_original_url");
               setTimeout(() => {
                 router.replace(storedUrl || "/cars");
-              }, 1000);
+              }, 200);
               return; // Exit early
             }
           }

@@ -6,7 +6,7 @@ import { useLiffGuest } from "../contexts/LiffGuestProvider";
 // ✅ LIFF Loading Component
 function LiffLoadingScreen() {
   return (
-    <div className="fixed inset-0  flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-main-900  flex items-center justify-center z-50">
       <div className="text-center">
         {/* ✅ Animated LIFF Logo */}
         <div className="mb-8">
@@ -73,7 +73,7 @@ export default function RootLayoutClient(props) {
 
   return (
     <>
-      <main className="flex-1 flex flex-col bg-main-900 w-screen h-screen">
+      <main className="flex-1 flex flex-col bg-main-900 w-screen h-fit">
         <Header />
         <div className="flex p-0 sm:p-4 mx-auto md:p-6">{children}</div>
       </main>
