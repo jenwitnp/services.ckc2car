@@ -8,6 +8,7 @@ export async function middleware(request: NextRequest) {
   try {
     // ✅ Define public routes that don't require authentication
     const publicRoutes = [
+      "/",
       "/login",
       "/cars", // Cars listing page
       "/cars/search", // Cars search page
