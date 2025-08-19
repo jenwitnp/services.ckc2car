@@ -78,23 +78,6 @@ export default function LoginPage() {
       )}
 
       {/* Conditional Login Form */}
-      <div className="w-full">
-        {showCredentialsForm ? (
-          <>
-            {/* Show instructions for linking */}
-            <div className="mb-4 p-3 bg-blue-500/20 border border-blue-500/30 rounded text-blue-300 text-sm">
-              เพื่อเชื่อมต่อบัญชี LINE ของคุณ
-              กรุณาเข้าสู่ระบบด้วยบัญชีผู้ใช้และรหัสผ่านของคุณก่อน
-            </div>
-
-            {/* Show credentials form with LINE ID to link */}
-            <LoginForm lineUserIdToLink={lineUserId} />
-          </>
-        ) : (
-          /* Show normal LINE login button (hidden in LIFF) */
-          !isLiffApp && <LineLoginBtn />
-        )}
-      </div>
 
       {/* Additional Info */}
       <div className="mt-6 text-center text-xs text-gray-500 w-full">
