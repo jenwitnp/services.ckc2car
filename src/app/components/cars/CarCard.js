@@ -122,7 +122,7 @@ const CarCard = React.memo(
       }
 
       // Fallback to placeholder image
-      return "/images/car-placeholder.jpg";
+      return "/images/placeholder-car.jpg";
     };
 
     const carImage = getCarImage();
@@ -170,7 +170,7 @@ const CarCard = React.memo(
         <div className="relative h-48 overflow-hidden group">
           <Link href={carDetailUrl} prefetch={true}>
             <Image
-              src={carImage}
+              src={carImage || "/placeholder-car.jpg"}
               alt={fullTitle}
               fill
               className="object-cover group-hover:scale-105 transition-transform duration-300"

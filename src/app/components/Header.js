@@ -20,7 +20,7 @@ const ProfileAvatar = ({ session, size = 32, isMobile = false }) => {
   // ✅ Default avatar fallback
   const DefaultAvatar = () => (
     <div
-      className="rounded-full bg-gradient-to-br from-main-600 to-main-700 flex items-center justify-center text-gray-200 font-semibold border-2 border-main-500"
+      className="rounded-full bg-gradient-to-br from-main-600 to-main-700 flex items-center justify-center text-main-200 font-semibold border-2 border-main-500"
       style={{ width: size, height: size, fontSize: size * 0.4 }}
     >
       {userName.charAt(0).toUpperCase()}
@@ -64,7 +64,7 @@ export default function Header() {
           <h1 className="text-xl sm:text-2xl font-bold text-white">
             CKC2CAR SERVICES
           </h1>
-          <p className="text-xs sm:text-sm text-gray-400">
+          <p className="text-xs sm:text-sm text-main-400">
             ระบบบริหารจัดการลูกค้าบริษัทโชคคูณโชค
           </p>
         </div>
@@ -83,9 +83,9 @@ export default function Header() {
           <input
             type="text"
             placeholder="รหัสรถ ยี่ห้อ รุ่น อื่นๆ..."
-            className="bg-main-800 text-gray-200 w-full md:w-auto rounded-full px-4 py-2 pl-10 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="bg-main-800 text-main-200 w-full md:w-auto rounded-full px-4 py-2 pl-10 focus:outline-none focus:ring-2 focus:ring-primary-500"
           />
-          <span className="absolute left-3 top-2.5 text-gray-400">
+          <span className="absolute left-3 top-2.5 text-main-400">
             <svg
               width="16"
               height="16"
@@ -102,14 +102,14 @@ export default function Header() {
 
         <div className="flex items-center gap-3 self-end md:self-auto">
           <button
-            className="relative rounded-full p-2 bg-main-800 text-gray-400 hover:text-blue-400 transition-colors"
+            className="relative rounded-full p-2 bg-main-800 text-main-400 hover:text-primary-400 transition-colors"
             aria-label="Notifications"
           >
             <Bell size={18} />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+            <span className="absolute top-1 right-1 w-2 h-2 bg-danger-500 rounded-full"></span>
           </button>
           <button
-            className="rounded-full p-2 bg-main-800 text-gray-400 hover:text-blue-400 transition-colors"
+            className="rounded-full p-2 bg-main-800 text-main-400 hover:text-primary-400 transition-colors"
             aria-label="Settings"
           >
             <Settings size={18} />
@@ -152,11 +152,11 @@ const ProfileDisplay = ({ session, isMobile = false }) => {
           />
 
           {!isMobile && (
-            <span className="text-gray-200 font-medium hidden sm:inline">
+            <span className="text-main-200 font-medium hidden sm:inline">
               {session?.user?.name || "Guest"}
             </span>
           )}
-          <ChevronDown size={isMobile ? 16 : 18} className="text-gray-400" />
+          <ChevronDown size={isMobile ? 16 : 18} className="text-main-400" />
         </div>
       }
       items={items}

@@ -32,7 +32,7 @@ export function CarSpecs({ specs }) {
     {
       icon: Gauge,
       label: "เลขไมล์",
-      value: specs.used_mile,
+      value: specs.used_mile ? `${formatNumber(specs.used_mile)} กม.` : "N/A",
     },
     {
       icon: Palette,
@@ -52,30 +52,34 @@ export function CarSpecs({ specs }) {
     {
       icon: DollarSign,
       label: "ดาวน์",
-      value: `เริ่มต้น ${formatNumber(specs.down_price)} บาท`,
+      value: specs.down_price
+        ? `เริ่มต้น ${formatNumber(specs.down_price)} บาท`
+        : "ติดต่อสอบถาม",
     },
     {
       icon: CreditCard,
       label: "ผ่อน",
-      value: formatNumber(specs.ins_price),
+      value: specs.ins_price
+        ? `${formatNumber(specs.ins_price)} บาท/เดือน`
+        : "ติดต่อสอบถาม",
     },
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
       {specItems.map((item, index) => {
         const IconComponent = item.icon;
 
         return (
-          <div key={index} className="flex items-start">
-            <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
-              <IconComponent className="w-5 h-5 text-amber-600 dark:text-amber-500" />
+          <div key={index} className="flex items-start group">
+            <div className="w-10 h-10 rounded-full bg-main-100 flex items-center justify-center flex-shrink-0 group-hover:bg-main-200 transition-colors duration-200">
+              <IconComponent className="w-5 h-5 text-main-600" />
             </div>
-            <div className="ml-3">
-              <p className="text-sm text-main-500 dark:text-main-400">
+            <div className="ml-3 min-w-0 flex-1">
+              <p className="text-sm text-main-500 mb-1 font-medium">
                 {item.label}
               </p>
-              <p className="text-gray-900 dark:text-white font-medium">
+              <p className="text-main-100 font-semibold leading-snug break-words">
                 {item.value || "N/A"}
               </p>
             </div>
@@ -85,5 +89,3 @@ export function CarSpecs({ specs }) {
     </div>
   );
 }
-
-// SpecIcon component can now be removed since we're using Lucide icons directly

@@ -72,8 +72,8 @@ function CarsPageContent() {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div>
-          <p className="mt-4 text-gray-600">กำลังโหลดข้อมูลรถยนต์...</p>
+          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-primary-500"></div>
+          <p className="mt-4 text-main-600">กำลังโหลดข้อมูลรถยนต์...</p>
         </div>
       </div>
     );
@@ -83,11 +83,11 @@ function CarsPageContent() {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <div className="text-center">
-          <div className="text-red-500 text-xl mb-4">เกิดข้อผิดพลาด</div>
-          <p className="text-gray-600 mb-4">{error.message}</p>
+          <div className="text-danger-500 text-xl mb-4">เกิดข้อผิดพลาด</div>
+          <p className="text-main-600 mb-4">{error.message}</p>
           <button
             onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+            className="px-4 py-2 bg-primary-500 text-white rounded hover:bg-primary-600"
           >
             ลองใหม่
           </button>
@@ -98,12 +98,12 @@ function CarsPageContent() {
 
   return (
     <div className="max-w-7xl mx-auto py-8 px-4">
-      <h1 className="text-3xl font-bold text-gray-900 mb-8">รถยนต์ทั้งหมด</h1>
+      <h1 className="text-3xl font-bold text-main-900 mb-8">รถยนต์ทั้งหมด</h1>
 
       {data && (
         <div className="space-y-6">
           {/* Results Info */}
-          <div className="text-gray-600">
+          <div className="text-main-600">
             พบรถยนต์ {data.pagination?.totalCount || 0} คัน
           </div>
 
@@ -112,7 +112,7 @@ function CarsPageContent() {
             {data.data?.map((car) => (
               <div
                 key={car.id}
-                className="bg-white rounded-lg shadow-md overflow-hidden"
+                className="bg-white rounded-lg shadow-md overflow-hidden border border-main-200"
               >
                 <div className="aspect-w-16 aspect-h-9">
                   {car.thumbnail && (
@@ -124,13 +124,13 @@ function CarsPageContent() {
                   )}
                 </div>
                 <div className="p-4">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  <h3 className="text-lg font-semibold text-main-900 mb-2">
                     {car.title}
                   </h3>
-                  <p className="text-2xl font-bold text-blue-600 mb-2">
+                  <p className="text-2xl font-bold text-primary-600 mb-2">
                     ฿{car.price?.toLocaleString()}
                   </p>
-                  <div className="text-sm text-gray-600 space-y-1">
+                  <div className="text-sm text-main-600 space-y-1">
                     <div>ปี: {car.years_car}</div>
                     <div>เกียร์: {car.gear}</div>
                     <div>เชื้อเพลิง: {car.fuel_type}</div>
@@ -138,7 +138,7 @@ function CarsPageContent() {
                   <div className="mt-4">
                     <Link
                       href={`/cars/${car.public_url || car.id}`}
-                      className="block w-full text-center bg-blue-600 text-white py-2 rounded hover:bg-blue-700 transition-colors"
+                      className="block w-full text-center bg-primary-600 text-white py-2 rounded hover:bg-primary-700 transition-colors"
                     >
                       ดูรายละเอียด
                     </Link>
@@ -160,8 +160,8 @@ function CarsPageContent() {
                   onClick={() => handlePageChange(page)}
                   className={`px-4 py-2 rounded ${
                     page === data.pagination.page
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                      ? "bg-primary-600 text-white"
+                      : "bg-main-200 text-main-700 hover:bg-main-300"
                   }`}
                 >
                   {page}
@@ -182,8 +182,8 @@ export default function CarsPage() {
       fallback={
         <div className="flex justify-center items-center min-h-screen">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div>
-            <p className="mt-4 text-gray-600">กำลังโหลดหน้ารถยนต์...</p>
+            <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-primary-500"></div>
+            <p className="mt-4 text-main-600">กำลังโหลดหน้ารถยนต์...</p>
           </div>
         </div>
       }

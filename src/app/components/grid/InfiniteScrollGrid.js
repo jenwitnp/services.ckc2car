@@ -30,11 +30,11 @@ export default function InfiniteScrollGrid({
   // Show error state
   if (isError) {
     return (
-      <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded">
+      <div className="bg-danger-50 border-l-4 border-danger-500 p-4 rounded">
         <div className="flex">
           <div className="flex-shrink-0">
             <svg
-              className="h-5 w-5 text-red-500"
+              className="h-5 w-5 text-danger-500"
               viewBox="0 0 20 20"
               fill="currentColor"
             >
@@ -46,8 +46,10 @@ export default function InfiniteScrollGrid({
             </svg>
           </div>
           <div className="ml-3">
-            <h3 className="text-sm font-medium text-red-800">เกิดข้อผิดพลาด</h3>
-            <p className="mt-1 text-sm text-red-700">
+            <h3 className="text-sm font-medium text-danger-800">
+              เกิดข้อผิดพลาด
+            </h3>
+            <p className="mt-1 text-sm text-danger-700">
               {error?.message || "Unknown error"}
             </p>
           </div>
@@ -61,7 +63,7 @@ export default function InfiniteScrollGrid({
     return (
       <div className="text-center py-16">
         <svg
-          className="mx-auto h-12 w-12 text-gray-400"
+          className="mx-auto h-12 w-12 text-main-100"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -73,7 +75,7 @@ export default function InfiniteScrollGrid({
             d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
           />
         </svg>
-        <h3 className="mt-2 text-lg font-medium text-gray-900">
+        <h3 className="mt-2 text-lg font-medium text-main-100">
           {emptyMessage}
         </h3>
       </div>
@@ -167,19 +169,19 @@ export default function InfiniteScrollGrid({
                     : "transparent",
                 border:
                   process.env.NODE_ENV === "development"
-                    ? "2px dashed red"
+                    ? "2px dashed danger"
                     : "none",
               }}
             >
               {process.env.NODE_ENV === "development" && (
-                <span className="text-xs text-red-500">Observer Target</span>
+                <span className="text-xs text-danger-500">Observer Target</span>
               )}
             </div>
 
             {/* Manual load button */}
             <button
               onClick={() => {
-                console.log("[InfiniteScrollGrid] Manual fetch triggered");
+                console.log("[InfiniteScrollGrid] Manual fetch triggedanger");
                 fetchNextPage();
               }}
               className="px-6 py-2 bg-main-700 text-main-100 rounded-full hover:bg-main-600 transition-colors"

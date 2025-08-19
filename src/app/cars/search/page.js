@@ -22,7 +22,7 @@ const SearchStats = ({ searchData, fromAI }) => {
     <div className="space-y-4">
       {/* AI Source Banner */}
       {fromAI && (
-        <div className="bg-success-700  rounded-lg p-4">
+        <div className="bg-success-700 rounded-lg p-4">
           <div className="flex items-center">
             <div className="flex-shrink-0">
               <svg
@@ -104,7 +104,7 @@ const SearchErrorBoundary = ({ children, error, retry }) => {
   if (error) {
     return (
       <div className="max-w-7xl mx-auto py-16 px-4">
-        <div className="bg-danger-50 border border-danger-200 rounded-lg p-6">
+        <div className="bg-danger-100 border border-danger-200 rounded-lg p-6">
           <div className="flex">
             <div className="flex-shrink-0">
               <svg
