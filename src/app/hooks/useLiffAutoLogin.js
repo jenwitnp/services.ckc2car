@@ -9,20 +9,18 @@ export function useLiffAutoLogin() {
   const [error, setError] = useState(null);
   const [guestUser, setGuestUser] = useState(null);
   const [originalUrl, setOriginalUrl] = useState(null);
-  const [shouldAutoRedirect, setShouldAutoRedirect] = useState(false); // ✅ Add auto-redirect flag
+  const [shouldAutoRedirect, setShouldAutoRedirect] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
     const initLiff = async () => {
       try {
-        // ✅ Capture the original URL before any redirects
         const currentUrl = window.location.href;
         const currentPath = window.location.pathname + window.location.search;
 
         console.log("[LIFF] Current URL:", currentUrl);
         console.log("[LIFF] Current path:", currentPath);
 
-        // Store original URL in sessionStorage for persistence
         if (
           !sessionStorage.getItem("liff_original_url") &&
           currentPath !== "/login"
@@ -31,7 +29,6 @@ export function useLiffAutoLogin() {
           console.log("[LIFF] Stored original URL:", currentPath);
         }
 
-        // Get stored original URL
         const storedOriginalUrl = sessionStorage.getItem("liff_original_url");
         setOriginalUrl(storedOriginalUrl);
 
@@ -44,42 +41,46 @@ export function useLiffAutoLogin() {
 
           setIsLiffApp(true);
 
-          if (window.liff.isLoggedIn()) {
-            console.log("[LIFF] User is logged in to LINE");
+          // ✅ Create anonymous guest user without requiring LINE login
+          console.log(
+            "[LIFF] Creating anonymous guest user for immediate access"
+          );
 
-            const profile = await window.liff.getProfile();
-            console.log("[LIFF] User profile:", profile);
+          const anonymousGuestUser = {
+            id: `liff_guest_${Date.now()}`,
+            name: "ผู้เยี่ยมชม LIFF",
+            pictureUrl: null,
+            platform: "liff",
+            isAnonymous: true,
+            originalUrl: storedOriginalUrl,
+            loginTime: new Date().toISOString(),
+          };
 
-            // ✅ Create enhanced guest user with original URL
-            const enhancedGuestUser = {
-              id: profile.userId,
-              name: profile.displayName,
-              pictureUrl: profile.pictureUrl,
-              platform: "liff",
-              originalUrl: storedOriginalUrl,
-              loginTime: new Date().toISOString(),
-            };
+          setGuestUser(anonymousGuestUser);
 
-            setGuestUser(enhancedGuestUser);
+          sessionStorage.setItem(
+            "liff_guest_user",
+            JSON.stringify(anonymousGuestUser)
+          );
 
-            // ✅ Store guest data in sessionStorage with URL
-            sessionStorage.setItem(
-              "liff_guest_user",
-              JSON.stringify(enhancedGuestUser)
-            );
+          console.log(
+            "[LIFF] Anonymous guest user setup complete with original URL:",
+            storedOriginalUrl
+          );
 
-            console.log(
-              "[LIFF] Guest user setup complete with original URL:",
-              storedOriginalUrl
-            );
-
-            // ✅ Enable auto-redirect if we have an original URL and we're on login page
-            if (storedOriginalUrl && window.location.pathname === "/login") {
-              console.log("[LIFF] Auto-redirect enabled for guest user");
-              setShouldAutoRedirect(true);
-            }
-          } else {
-            console.log("[LIFF] User not logged in to LINE");
+          // ✅ Enable immediate redirect if we have an original URL
+          if (storedOriginalUrl && window.location.pathname === "/login") {
+            console.log("[LIFF] Auto-redirect enabled for anonymous guest");
+            setShouldAutoRedirect(true);
+          } else if (
+            storedOriginalUrl &&
+            window.location.pathname !== storedOriginalUrl
+          ) {
+            // ✅ If we're not on the login page and have an original URL, redirect immediately
+            console.log("[LIFF] Redirecting immediately to original URL");
+            setTimeout(() => {
+              navigateToOriginalUrl();
+            }, 100);
           }
         } else {
           console.log("[LIFF] Not in LIFF environment");
@@ -97,44 +98,56 @@ export function useLiffAutoLogin() {
     initLiff();
   }, []);
 
-  // ✅ Auto-redirect effect for LIFF guests
+  // ✅ Immediate auto-redirect effect (no countdown)
   useEffect(() => {
     if (shouldAutoRedirect && guestUser && originalUrl && !error) {
-      const autoRedirectDelay = 2000; // 2 seconds delay to show welcome message
-
       console.log(
-        "[LIFF] Auto-redirecting guest to original URL in 2 seconds:",
+        "[LIFF] Auto-redirecting guest to original URL immediately:",
         originalUrl
       );
 
+      // ✅ Very short delay just to ensure UI state is set
       const timer = setTimeout(() => {
         navigateToOriginalUrl();
-      }, autoRedirectDelay);
+      }, 100); // 0.1 seconds
 
       return () => clearTimeout(timer);
     }
   }, [shouldAutoRedirect, guestUser, originalUrl, error]);
 
-  // ✅ Function to navigate to original URL or fallback
   const navigateToOriginalUrl = (fallbackUrl = "/cars") => {
     const targetUrl = originalUrl || fallbackUrl;
     console.log("[LIFF] Navigating to:", targetUrl);
-
-    // Clear the stored URL after use
-    sessionStorage.removeItem("liff_original_url");
-
     router.push(targetUrl);
   };
 
-  // ✅ Function to get original URL without consuming it
   const getOriginalUrl = () => {
     return originalUrl || sessionStorage.getItem("liff_original_url");
   };
 
-  // ✅ Function to cancel auto-redirect
   const cancelAutoRedirect = () => {
     setShouldAutoRedirect(false);
     console.log("[LIFF] Auto-redirect cancelled by user");
+  };
+
+  const checkLineLogin = async () => {
+    if (isLiffApp && window.liff && window.liff.isLoggedIn()) {
+      try {
+        const profile = await window.liff.getProfile();
+        return {
+          isLoggedIn: true,
+          profile: {
+            id: profile.userId,
+            name: profile.displayName,
+            pictureUrl: profile.pictureUrl,
+          },
+        };
+      } catch (error) {
+        console.error("Error getting LINE profile:", error);
+        return { isLoggedIn: false, profile: null };
+      }
+    }
+    return { isLoggedIn: false, profile: null };
   };
 
   return {
@@ -143,9 +156,10 @@ export function useLiffAutoLogin() {
     error,
     guestUser,
     originalUrl,
-    shouldAutoRedirect, // ✅ Expose auto-redirect state
+    shouldAutoRedirect,
     navigateToOriginalUrl,
     getOriginalUrl,
-    cancelAutoRedirect, // ✅ Expose cancel function
+    cancelAutoRedirect,
+    checkLineLogin,
   };
 }
