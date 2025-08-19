@@ -6,7 +6,7 @@ import LineProvider from "next-auth/providers/line"; // <-- 1. Import LineProvid
 async function getUserByLineId(lineUserId) {
   try {
     const res = await fetch(
-      `http://localhost:3000/api/v1/user/line-connect/by-line-id/${lineUserId}`
+      `${process.env.BASE_URL}/api/v1/user/line-connect/by-line-id/${lineUserId}`
     );
     if (!res.ok) return null;
     const data = await res.json();

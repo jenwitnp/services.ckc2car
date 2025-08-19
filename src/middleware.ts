@@ -6,6 +6,24 @@ export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   try {
+    // ✅ Define public routes that don't require authentication
+    const publicRoutes = [
+      "/login",
+      "/cars", // Cars listing page
+      "/cars/search", // Cars search page
+    ];
+
+    // ✅ Define public path patterns
+    const publicPatterns = [
+      /^\/cars\/[^\/]+$/, // Individual car pages: /cars/toyota-camry-2020-123
+      /^\/cars\/search/, // All search pages: /cars/search?q=...
+    ];
+
+    // Check if current path is public
+    const isPublicRoute =
+      publicRoutes.includes(pathname) ||
+      publicPatterns.some((pattern) => pattern.test(pathname));
+
     // Get the token from the request
     const token = await getToken({
       req: request,
@@ -18,7 +36,7 @@ export async function middleware(request: NextRequest) {
     }
 
     // If not authenticated and trying to access protected routes, redirect to /login
-    if (!token && pathname !== "/login") {
+    if (!token && !isPublicRoute) {
       return NextResponse.redirect(new URL("/login", request.url));
     }
 
@@ -39,23 +57,26 @@ export async function middleware(request: NextRequest) {
 
     return NextResponse.next();
   } catch (error) {
-    // If error getting token, treat as unauthenticated
-    if (pathname !== "/login") {
+    console.error("Middleware error:", error);
+
+    // If error getting token, check if it's a public route
+    const isPublicRoute =
+      pathname === "/login" || pathname.startsWith("/cars/");
+
+    if (!isPublicRoute) {
       return NextResponse.redirect(new URL("/login", request.url));
     }
     return NextResponse.next();
   }
 }
 
-// Only run middleware on these routes (protect everything except /login, /api, _next, etc.)
+// ✅ Updated matcher to be more specific
 export const config = {
   matcher: [
     /*
-      Match all routes except:
-      - /login
-      - /api (API routes)
-      - /_next (Next.js internals)
-      - /static, /favicon.ico, /robots.txt, etc.
+      Match specific routes for authentication:
+      - All routes except public ones
+      - Still include car detail redirects
     */
     "/((?!login|api|_next|static|favicon.ico|robots.txt).*)",
     "/cars/detail/:path*",

@@ -24,15 +24,15 @@ export function CarGallery({ images, thumbnail, title }) {
 
   return (
     <div className="relative">
-      {/* Main image - mobile responsive */}
-      <div className="relative h-[285px]   m-4 bg-gray-200 dark:bg-gray-700 overflow-hidden rounded-lg shadow-sm mb-2">
+      {/* Main image - aspect ratio based */}
+      <div className="relative aspect-[3/2]  m-4 bg-gray-200 dark:bg-gray-700 overflow-hidden rounded-lg shadow-sm mb-2">
         <Image
           src={`${rootUrl}${mainImage || thumbnail}`}
           alt={`${title} - Main view`}
           fill
           className="object-cover object-center rounded-lg"
           priority
-          sizes="(max-width: 640px) 100vw, 900px"
+          sizes="(max-width: 640px) 100vw, (max-width: 768px) 80vw, (max-width: 1024px) 70vw, 60vw"
           onError={(e) => {
             e.target.onerror = null;
             e.target.src = "/images/car-placeholder.jpg";

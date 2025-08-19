@@ -5,7 +5,83 @@ import { urlUtils } from "../utils/urlUtils";
 import CarDetailButton from "./CarDetailButton";
 import { CONSTANTS } from "../utils/constants";
 
-const TextWithUrlButtons = React.memo(({ text, urlMatches }) => {
+const TextWithUrlButtons = React.memo(({ text, carData = [] }) => {
+  let processedText = text;
+  const elements = [];
+  let keyIndex = 0;
+
+  // Find car codes in text and replace with buttons
+  const carCodePattern = /\b([A-Z]\d+|SOLD)\b/g;
+  const carCodeMatches = [...text.matchAll(carCodePattern)];
+
+  carCodeMatches.forEach((match) => {
+    const carCode = match[0];
+    const matchIndex = match.index;
+
+    // Find corresponding car data
+    const foundCar = carData.find(
+      (car) =>
+        car["รหัสรถ"] === carCode ||
+        car.รหัสรถ === carCode ||
+        car.key_word?.includes(carCode)
+    );
+
+    if (foundCar) {
+      // Add text before the car code
+      const beforeText = processedText.substring(0, matchIndex);
+      if (beforeText) {
+        elements.push(
+          <span key={`text-${keyIndex++}`} className="whitespace-pre-wrap">
+            {beforeText}
+          </span>
+        );
+      }
+
+      // Generate URL using urlUtils
+      const generatedUrl = urlUtils.generateCarDetailUrl(foundCar);
+
+      elements.push(
+        <CarDetailButton
+          key={`car-${keyIndex++}`}
+          url={generatedUrl}
+          carId={carCode}
+          title={`${foundCar.ยี่ห้อ} ${foundCar.รุ่น} ${foundCar.รถปี}`}
+          size="sm"
+          className="mx-1 my-1"
+        />
+      );
+
+      // Update processed text to remove the matched part
+      processedText = processedText.substring(matchIndex + carCode.length);
+    }
+  });
+
+  // Add remaining text
+  if (processedText) {
+    elements.push(
+      <span key={`text-final-${keyIndex}`} className="whitespace-pre-wrap">
+        {processedText}
+      </span>
+    );
+  }
+
+  // If no car codes found, check for existing URLs as fallback
+  if (elements.length === 0) {
+    const urlMatches = messageUtils.extractUrlsFromText(text);
+    if (urlMatches.length > 0) {
+      return <TextWithUrlButtonsOriginal text={text} urlMatches={urlMatches} />;
+    }
+  }
+
+  return elements.length > 0 ? (
+    <div className="leading-relaxed">{elements}</div>
+  ) : (
+    <div className="whitespace-pre-wrap leading-relaxed">{text}</div>
+  );
+});
+
+// Keep original function as fallback for existing URLs
+const TextWithUrlButtonsOriginal = React.memo(({ text, urlMatches }) => {
   let processedText = text;
   const elements = [];
   let keyIndex = 0;
@@ -48,20 +124,23 @@ const TextWithUrlButtons = React.memo(({ text, urlMatches }) => {
 });
 
 const CarCard = React.memo(({ part, rawData }) => {
-  const carCodeMatch = part.match(/\b[A-Z]\d+\b/);
+  const carCodeMatch = part.match(/\b([A-Z]\d+|SOLD)\b/);
   const carCode = carCodeMatch?.[0];
   const carData = carCode
-    ? rawData.find((car) => car["รหัสรถ"] === carCode)
+    ? rawData.find(
+        (car) =>
+          car["รหัสรถ"] === carCode ||
+          car.รหัสรถ === carCode ||
+          car.key_word?.includes(carCode)
+      )
     : null;
 
-  const urlMatches = messageUtils.extractUrlsFromText(part);
-
-  const hasRawDataUrl = carData?.url;
-  const hasTextUrl = urlMatches.length > 0;
-
   let textToShow = part.trim();
-  if (hasRawDataUrl) {
+
+  // Remove any existing URL references from text
+  if (carData) {
     textToShow = textToShow.replace(/- \*\*รายละเอียด:\*\*.*\n?/g, "");
+    textToShow = textToShow.replace(/รายละเอียด:.*$/gm, "");
   }
 
   if (!textToShow) return null;
@@ -71,36 +150,25 @@ const CarCard = React.memo(({ part, rawData }) => {
       <div className="whitespace-pre-wrap mb-3">🚗 {textToShow}</div>
 
       <div className="flex flex-wrap gap-2">
-        {hasRawDataUrl ? (
+        {carData && (
           <CarDetailButton
-            url={carData.url}
-            carId={carData["รหัสรถ"]}
+            url={urlUtils.generateCarDetailUrl(carData)}
+            carId={carData["รหัสรถ"] || carData.รหัสรถ}
+            title={`${carData.ยี่ห้อ} ${carData.รุ่น} ${carData.รถปี}`}
             variant="primary"
             size="sm"
           />
-        ) : hasTextUrl ? (
-          <CarDetailButton
-            url={urlMatches[0][0]}
-            carId={urlMatches[0][1]}
-            variant="secondary"
-            size="sm"
-          />
-        ) : null}
+        )}
 
-        {/* Additional URLs (only if no rawData) */}
-        {!hasRawDataUrl &&
-          urlMatches.length > 1 &&
-          urlMatches
-            .slice(1)
-            .map((match, index) => (
-              <CarDetailButton
-                key={index}
-                url={match[0]}
-                carId={match[1]}
-                variant="outline"
-                size="xs"
-              />
-            ))}
+        {/* YouTube link if available */}
+        {carData?.youtube && (
+          <button
+            onClick={() => window.open(carData.youtube, "_blank")}
+            className="px-3 py-1 bg-red-500 text-white text-xs rounded-md hover:bg-red-600 transition-colors"
+          >
+            📺 YouTube
+          </button>
+        )}
       </div>
     </div>
   );
@@ -113,21 +181,12 @@ const StructuredCarContent = React.memo(({ text, rawData }) => {
   // Intro text
   if (textParts[0]) {
     const introText = textParts[0].trim();
-    const introUrls = messageUtils.extractUrlsFromText(introText);
 
-    if (introUrls.length > 0) {
-      renderedParts.push(
-        <div key="intro" className="whitespace-pre-wrap mb-3">
-          <TextWithUrlButtons text={introText} urlMatches={introUrls} />
-        </div>
-      );
-    } else {
-      renderedParts.push(
-        <p key="intro" className="whitespace-pre-wrap mb-3">
-          {introText}
-        </p>
-      );
-    }
+    renderedParts.push(
+      <div key="intro" className="whitespace-pre-wrap mb-3">
+        <TextWithUrlButtons text={introText} carData={rawData} />
+      </div>
+    );
   }
 
   // Car cards
@@ -147,20 +206,11 @@ const StructuredCarContent = React.memo(({ text, rawData }) => {
       }
 
       if (summary) {
-        const summaryUrls = messageUtils.extractUrlsFromText(summary);
-        if (summaryUrls.length > 0) {
-          renderedParts.push(
-            <div key="summary" className="whitespace-pre-wrap mt-4">
-              <TextWithUrlButtons text={summary} urlMatches={summaryUrls} />
-            </div>
-          );
-        } else {
-          renderedParts.push(
-            <p key="summary" className="whitespace-pre-wrap mt-4">
-              {summary}
-            </p>
-          );
-        }
+        renderedParts.push(
+          <div key="summary" className="whitespace-pre-wrap mt-4">
+            <TextWithUrlButtons text={summary} carData={rawData} />
+          </div>
+        );
       }
     } else {
       renderedParts.push(
@@ -179,18 +229,26 @@ const MessageRenderer = React.memo(
     const shouldShowButton = messageUtils.shouldShowViewAllButton(message);
 
     const renderTextWithLinks = useCallback((text, rawData = []) => {
-      const urlMatches = messageUtils.extractUrlsFromText(text);
+      console.log("renderTextWithLinks - rawData:", rawData);
 
-      if (!rawData?.length || !text.includes("🚗")) {
-        if (urlMatches.length > 0) {
-          return <TextWithUrlButtons text={text} urlMatches={urlMatches} />;
+      // If we have raw data, use it to generate proper URLs
+      if (rawData?.length > 0) {
+        if (text.includes("🚗")) {
+          return <StructuredCarContent text={text} rawData={rawData} />;
+        } else {
+          return <TextWithUrlButtons text={text} carData={rawData} />;
         }
+      }
+
+      // Fallback to URL extraction for backward compatibility
+      const urlMatches = messageUtils.extractUrlsFromText(text);
+      if (urlMatches.length > 0) {
         return (
-          <div className="whitespace-pre-wrap leading-relaxed">{text}</div>
+          <TextWithUrlButtonsOriginal text={text} urlMatches={urlMatches} />
         );
       }
 
-      return <StructuredCarContent text={text} rawData={rawData} />;
+      return <div className="whitespace-pre-wrap leading-relaxed">{text}</div>;
     }, []);
 
     const handleViewAllClick = useCallback(() => {
@@ -282,6 +340,7 @@ const MessageRenderer = React.memo(
 
 MessageRenderer.displayName = "MessageRenderer";
 TextWithUrlButtons.displayName = "TextWithUrlButtons";
+TextWithUrlButtonsOriginal.displayName = "TextWithUrlButtonsOriginal";
 StructuredCarContent.displayName = "StructuredCarContent";
 CarCard.displayName = "CarCard";
 
