@@ -1,141 +1,119 @@
 "use client";
+
 import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 export function useLiffAutoLogin() {
   const [isLiffApp, setIsLiffApp] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [liffData, setLiffData] = useState(null);
-  const [guestUser, setGuestUser] = useState(null); // ✅ Guest user for LIFF
+  const [guestUser, setGuestUser] = useState(null);
+  const [originalUrl, setOriginalUrl] = useState(null); // ✅ Track original URL
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
-    const initializeLiff = async () => {
+    const initLiff = async () => {
       try {
-        // Load LINE LIFF SDK dynamically
-        if (typeof window !== "undefined" && !window.liff) {
-          const script = document.createElement("script");
-          script.src = "https://static.line-scdn.net/liff/edge/2/sdk.js";
-          script.async = true;
-          document.head.appendChild(script);
+        // ✅ Capture the original URL before any redirects
+        const currentUrl = window.location.href;
+        const currentPath = window.location.pathname + window.location.search;
 
-          await new Promise((resolve) => {
-            script.onload = resolve;
-          });
+        console.log("[LIFF] Current URL:", currentUrl);
+        console.log("[LIFF] Current path:", currentPath);
+
+        // Store original URL in sessionStorage for persistence
+        if (
+          !sessionStorage.getItem("liff_original_url") &&
+          currentPath !== "/login"
+        ) {
+          sessionStorage.setItem("liff_original_url", currentPath);
+          console.log("[LIFF] Stored original URL:", currentPath);
         }
 
-        // Initialize LIFF
-        if (window.liff) {
-          const liffId = process.env.NEXT_PUBLIC_LINE_LIFF_ID;
+        // Get stored original URL
+        const storedOriginalUrl = sessionStorage.getItem("liff_original_url");
+        setOriginalUrl(storedOriginalUrl);
 
-          if (!liffId) {
-            console.warn("[LIFF] LIFF ID not configured");
-            setIsLoading(false);
-            return;
-          }
+        if (typeof window !== "undefined" && window.liff) {
+          console.log("[LIFF] Initializing LIFF...");
 
-          await window.liff.init({ liffId });
+          await window.liff.init({
+            liffId: process.env.NEXT_PUBLIC_LINE_LIFF_ID,
+          });
 
-          if (window.liff.isInClient()) {
-            setIsLiffApp(true);
+          setIsLiffApp(true);
 
-            try {
-              // ✅ Get LIFF profile for guest access (no authentication required)
-              const profile = await window.liff.getProfile();
-              const context = window.liff.getContext();
+          if (window.liff.isLoggedIn()) {
+            console.log("[LIFF] User is logged in to LINE");
 
-              setLiffData({ profile, context });
+            const profile = await window.liff.getProfile();
+            console.log("[LIFF] User profile:", profile);
 
-              // ✅ Create guest user from LIFF profile
-              const guestUserData = {
-                id: `liff_guest_${profile.userId}`,
-                name: profile.displayName,
-                image: profile.pictureUrl,
-                userType: "liff_guest",
-                lineUserId: profile.userId,
-                isGuest: true,
-              };
+            // ✅ Create enhanced guest user with original URL
+            const enhancedGuestUser = {
+              id: profile.userId,
+              name: profile.displayName,
+              pictureUrl: profile.pictureUrl,
+              platform: "liff",
+              originalUrl: storedOriginalUrl, // ✅ Include original URL
+              loginTime: new Date().toISOString(),
+            };
 
-              setGuestUser(guestUserData);
+            setGuestUser(enhancedGuestUser);
 
-              console.log("[LIFF] Guest user created:", guestUserData);
-              console.log("[LIFF] LIFF context:", context);
-            } catch (profileError) {
-              console.warn(
-                "[LIFF] Could not get profile, continuing as anonymous guest"
-              );
+            // ✅ Store guest data in sessionStorage with URL
+            sessionStorage.setItem(
+              "liff_guest_user",
+              JSON.stringify(enhancedGuestUser)
+            );
 
-              // ✅ Create anonymous guest if profile fails
-              const anonymousGuest = {
-                id: `liff_anonymous_${Date.now()}`,
-                name: "ผู้เยียมชม LINE",
-                image: null,
-                userType: "liff_guest",
-                lineUserId: null,
-                isGuest: true,
-                isAnonymous: true,
-              };
-
-              setGuestUser(anonymousGuest);
-            }
-
-            setIsLoading(false);
+            console.log(
+              "[LIFF] Guest user setup complete with original URL:",
+              storedOriginalUrl
+            );
           } else {
-            console.log("[LIFF] Not running in LINE client");
-            setIsLoading(false);
+            console.log("[LIFF] User not logged in to LINE");
           }
+        } else {
+          console.log("[LIFF] Not in LIFF environment");
+          setIsLiffApp(false);
         }
       } catch (err) {
         console.error("[LIFF] Initialization error:", err);
         setError(err.message);
+        setIsLiffApp(false);
+      } finally {
         setIsLoading(false);
       }
     };
 
-    initializeLiff();
+    initLiff();
   }, []);
 
-  const sendMessage = async (message) => {
-    if (window.liff && isLiffApp) {
-      try {
-        await window.liff.sendMessages([
-          {
-            type: "text",
-            text: message,
-          },
-        ]);
-        return true;
-      } catch (err) {
-        console.error("[LIFF] Send message error:", err);
-        return false;
-      }
-    }
-    return false;
+  // ✅ Function to navigate to original URL or fallback
+  const navigateToOriginalUrl = (fallbackUrl = "/cars") => {
+    const targetUrl = originalUrl || fallbackUrl;
+    console.log("[LIFF] Navigating to:", targetUrl);
+
+    // Clear the stored URL after use
+    sessionStorage.removeItem("liff_original_url");
+
+    router.push(targetUrl);
   };
 
-  const closeWindow = () => {
-    if (window.liff && isLiffApp) {
-      window.liff.closeWindow();
-    }
-  };
-
-  // ✅ Function to login with the guest user (optional)
-  const loginAsGuest = () => {
-    if (guestUser) {
-      // Store guest user in localStorage for persistence
-      localStorage.setItem("liff_guest_user", JSON.stringify(guestUser));
-      return guestUser;
-    }
-    return null;
+  // ✅ Function to get original URL without consuming it
+  const getOriginalUrl = () => {
+    return originalUrl || sessionStorage.getItem("liff_original_url");
   };
 
   return {
     isLiffApp,
     isLoading,
     error,
-    liffData,
-    guestUser, // ✅ Expose guest user
-    sendMessage,
-    closeWindow,
-    loginAsGuest, // ✅ Optional login function
+    guestUser,
+    originalUrl, // ✅ Expose original URL
+    navigateToOriginalUrl, // ✅ Helper function
+    getOriginalUrl, // ✅ Getter function
   };
 }

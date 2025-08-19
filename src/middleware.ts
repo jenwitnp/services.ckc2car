@@ -4,6 +4,7 @@ import { getToken } from "next-auth/jwt";
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
+  const searchParams = request.nextUrl.searchParams;
 
   try {
     // ✅ Define public routes (accessible to everyone including LIFF guests)
@@ -39,20 +40,58 @@ export async function middleware(request: NextRequest) {
 
     // Handle unauthenticated users trying to access protected routes
     if (!token) {
+      // ✅ Preserve the original URL for LIFF users
+      const isLiffRequest =
+        request.headers.get("user-agent")?.includes("Line") ||
+        searchParams.get("liff") === "true";
+
       if (internalOnlyRoutes.some((route) => pathname.startsWith(route))) {
-        return NextResponse.redirect(new URL("/login/internal", request.url));
+        const redirectUrl = new URL("/login/internal", request.url);
+
+        // ✅ Add original URL as parameter for internal routes
+        if (isLiffRequest) {
+          redirectUrl.searchParams.set("returnUrl", pathname);
+        }
+
+        return NextResponse.redirect(redirectUrl);
       }
-      return NextResponse.redirect(new URL("/login", request.url));
+
+      const redirectUrl = new URL("/login", request.url);
+
+      // ✅ Preserve original URL for LIFF users
+      if (isLiffRequest && pathname !== "/login") {
+        redirectUrl.searchParams.set(
+          "returnUrl",
+          pathname + request.nextUrl.search
+        );
+      }
+
+      return NextResponse.redirect(redirectUrl);
     }
 
     // Handle authenticated users
     if (token) {
       const userType = token.user?.userType;
 
-      // Redirect internal users accessing wrong login pages
+      // ✅ Enhanced redirect for internal users with URL preservation
       if (userType === "internal") {
         if (pathname === "/login" || pathname === "/login/internal") {
-          return NextResponse.redirect(new URL("/dashboard", request.url));
+          const returnUrl = searchParams.get("returnUrl");
+          const redirectTarget =
+            returnUrl && !returnUrl.includes("/login")
+              ? returnUrl
+              : "/dashboard";
+
+          return NextResponse.redirect(new URL(redirectTarget, request.url));
+        }
+      } else {
+        // ✅ Enhanced redirect for regular users with URL preservation
+        if (pathname === "/login") {
+          const returnUrl = searchParams.get("returnUrl");
+          const redirectTarget =
+            returnUrl && !returnUrl.includes("/login") ? returnUrl : "/cars";
+
+          return NextResponse.redirect(new URL(redirectTarget, request.url));
         }
       }
 
@@ -68,15 +107,27 @@ export async function middleware(request: NextRequest) {
   } catch (error) {
     console.error("Middleware error:", error);
 
-    // On error, allow public routes, redirect others to login
+    // ✅ On error, preserve URL if possible
+    const isPublicRoute =
+      publicRoutes.some((route) => pathname.startsWith(route)) ||
+      pathname.startsWith("/cars/");
+
     if (isPublicRoute) {
       return NextResponse.next();
     }
 
     if (internalOnlyRoutes.some((route) => pathname.startsWith(route))) {
-      return NextResponse.redirect(new URL("/login/internal", request.url));
+      const redirectUrl = new URL("/login/internal", request.url);
+      redirectUrl.searchParams.set("returnUrl", pathname);
+      return NextResponse.redirect(redirectUrl);
     }
-    return NextResponse.redirect(new URL("/login", request.url));
+
+    const redirectUrl = new URL("/login", request.url);
+    redirectUrl.searchParams.set(
+      "returnUrl",
+      pathname + request.nextUrl.search
+    );
+    return NextResponse.redirect(redirectUrl);
   }
 }
 
