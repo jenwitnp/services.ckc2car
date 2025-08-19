@@ -76,28 +76,6 @@ export default function CarDetailPage() {
   return (
     <div className="min-h-screen bg-main-900">
       {/* Header Navigation */}
-      <div className="bg-main-900 border-b border-main-800 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
-            <button
-              onClick={() => window.history.back()}
-              className="inline-flex items-center text-main-300 hover:text-main-100 transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5 mr-2" />
-              <span className="hidden sm:inline">กลับ</span>
-            </button>
-
-            <div className="flex items-center space-x-3">
-              <button className="p-2 text-main-300 hover:text-danger-400 transition-colors">
-                <Heart className="w-5 h-5" />
-              </button>
-              <button className="p-2 text-main-300 hover:text-primary-400 transition-colors">
-                <Share2 className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 py-6">
