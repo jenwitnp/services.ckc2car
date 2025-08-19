@@ -20,7 +20,7 @@ export default function RootLayout({ children }) {
           async
         ></script>
       </head>
-      <body className="flex bg-main-900 mx-auto h-screen overflow-auto">
+      <body className="flex  bg-main-900 mx-auto h-screen overflow-auto">
         <ClientLayout>{children}</ClientLayout>
       </body>
     </html>

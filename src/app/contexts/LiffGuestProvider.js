@@ -8,6 +8,7 @@ const LiffGuestContext = createContext();
 export function LiffGuestProvider({ children }) {
   const [isLiffApp, setIsLiffApp] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadingStatus, setLoadingStatus] = useState("initializing"); // ✅ Track loading stages
   const [error, setError] = useState(null);
   const [guestUser, setGuestUser] = useState(null);
   const router = useRouter();
@@ -15,6 +16,7 @@ export function LiffGuestProvider({ children }) {
   useEffect(() => {
     const initLiff = async () => {
       try {
+        setLoadingStatus("detecting"); // ✅ Update status
         const currentPath = window.location.pathname + window.location.search;
         console.log("[LIFF Guest] Current path:", currentPath);
 
@@ -22,12 +24,17 @@ export function LiffGuestProvider({ children }) {
         if (typeof window !== "undefined" && window.liff) {
           console.log("[LIFF Guest] LIFF environment detected");
           setIsLiffApp(true);
+          setLoadingStatus("connecting"); // ✅ Update status
 
           try {
             await window.liff.init({
               liffId: process.env.NEXT_PUBLIC_LINE_LIFF_ID,
             });
             console.log("[LIFF Guest] LIFF initialized successfully");
+            setLoadingStatus("authenticated"); // ✅ Update status
+
+            // ✅ Small delay to show success state
+            await new Promise((resolve) => setTimeout(resolve, 800));
 
             // ✅ Create guest user automatically
             const guestUser = {
@@ -44,6 +51,7 @@ export function LiffGuestProvider({ children }) {
 
             // ✅ If on login page, get stored original URL and redirect immediately
             if (currentPath === "/login") {
+              setLoadingStatus("redirecting"); // ✅ Update status
               const storedUrl = sessionStorage.getItem("liff_original_url");
               if (storedUrl) {
                 console.log(
@@ -51,12 +59,18 @@ export function LiffGuestProvider({ children }) {
                   storedUrl
                 );
                 sessionStorage.removeItem("liff_original_url");
-                router.replace(storedUrl);
+
+                // ✅ Small delay before redirect
+                setTimeout(() => {
+                  router.replace(storedUrl);
+                }, 500);
                 return; // Exit early
               } else {
                 // No stored URL, redirect to cars
                 console.log("[LIFF Guest] No stored URL, redirecting to cars");
-                router.replace("/cars");
+                setTimeout(() => {
+                  router.replace("/cars");
+                }, 500);
                 return; // Exit early
               }
             } else {
@@ -66,6 +80,7 @@ export function LiffGuestProvider({ children }) {
             }
           } catch (liffError) {
             console.warn("[LIFF Guest] LIFF init failed:", liffError);
+            setLoadingStatus("fallback"); // ✅ Update status
 
             // ✅ Even if LIFF fails, create guest user and redirect
             const guestUser = {
@@ -81,20 +96,30 @@ export function LiffGuestProvider({ children }) {
             // ✅ If on login page, redirect immediately
             if (currentPath === "/login") {
               const storedUrl = sessionStorage.getItem("liff_original_url");
-              router.replace(storedUrl || "/cars");
+              setTimeout(() => {
+                router.replace(storedUrl || "/cars");
+              }, 1000);
               return; // Exit early
             }
           }
         } else {
           console.log("[LIFF Guest] Not in LIFF environment");
           setIsLiffApp(false);
+          setLoadingStatus("completed"); // ✅ Update status
         }
       } catch (err) {
         console.error("[LIFF Guest] Initialization error:", err);
         setError(err.message);
         setIsLiffApp(false);
+        setLoadingStatus("error"); // ✅ Update status
       } finally {
-        setIsLoading(false);
+        // ✅ Ensure minimum loading time for better UX
+        setTimeout(
+          () => {
+            setIsLoading(false);
+          },
+          isLiffApp ? 1500 : 500
+        );
       }
     };
 
@@ -104,9 +129,29 @@ export function LiffGuestProvider({ children }) {
   const value = {
     isLiffApp,
     isLoading,
+    loadingStatus, // ✅ Expose loading status
     error,
     guestUser,
     isGuest: () => guestUser?.type === "guest",
+    // ✅ Helper functions
+    getLoadingMessage: () => {
+      switch (loadingStatus) {
+        case "detecting":
+          return "กำลังตรวจสอบสภาพแวดล้อม LINE...";
+        case "connecting":
+          return "กำลังเชื่อมต่อกับ LINE LIFF...";
+        case "authenticated":
+          return "เข้าสู่ระบบสำเร็จ!";
+        case "redirecting":
+          return "กำลังนำทางไปยังหน้าเป้าหมาย...";
+        case "fallback":
+          return "กำลังใช้โหมดสำรอง...";
+        case "error":
+          return "เกิดข้อผิดพลาด กำลังลองใหม่...";
+        default:
+          return "กำลังเตรียมความพร้อม...";
+      }
+    },
   };
 
   return (
