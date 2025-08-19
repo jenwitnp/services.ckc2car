@@ -11,17 +11,31 @@ import { useRouter } from "next/navigation";
 export default function LoginPage() {
   const [errorType, setErrorType] = useState(null);
   const [lineUserId, setLineUserId] = useState(null);
+  const [countdown, setCountdown] = useState(2); // ✅ Add countdown state
   const {
     isLiffApp,
     isLoading,
     error,
     guestUser,
     originalUrl,
+    shouldAutoRedirect, // ✅ Get auto-redirect state
     navigateToOriginalUrl,
     getOriginalUrl,
+    cancelAutoRedirect, // ✅ Get cancel function
   } = useLiffAutoLogin();
   const { data: session, status } = useSession();
   const router = useRouter();
+
+  // ✅ Countdown timer for auto-redirect
+  useEffect(() => {
+    if (shouldAutoRedirect && countdown > 0) {
+      const timer = setTimeout(() => {
+        setCountdown(countdown - 1);
+      }, 1000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [shouldAutoRedirect, countdown]);
 
   // ✅ Handle session-based redirects with URL preservation
   useEffect(() => {
@@ -54,17 +68,6 @@ export default function LoginPage() {
       }
     }
   }, [session, status, router, getOriginalUrl]);
-
-  // ✅ Handle LIFF guest access with original URL
-  useEffect(() => {
-    if (isLiffApp && guestUser && !session) {
-      console.log(
-        "[Login] LIFF guest detected with original URL:",
-        originalUrl
-      );
-      // Don't auto-redirect, let them choose but show the original URL
-    }
-  }, [isLiffApp, guestUser, session, originalUrl]);
 
   // Check URL parameters for old architecture
   useEffect(() => {
@@ -155,11 +158,84 @@ export default function LoginPage() {
     return "หน้ารายการรถยนต์";
   };
 
+  // ✅ Show auto-redirect screen for LIFF guests
+  if (shouldAutoRedirect && guestUser && originalUrl) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="max-w-md w-full space-y-8">
+          <div className="bg-green-500/20 border border-green-500/30 rounded-lg p-8 text-center">
+            <div className="mb-6">
+              <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span className="text-white text-2xl">✓</span>
+              </div>
+              <h2 className="text-2xl font-bold text-green-300 mb-2">
+                ยินดีต้อนรับ {guestUser.name}!
+              </h2>
+              <p className="text-green-400">LIFF ยืนยันตัวตนเรียบร้อยแล้ว</p>
+            </div>
+
+            <div className="bg-white/10 rounded-lg p-4 mb-6">
+              <p className="text-white mb-2">กำลังนำคุณไปยัง:</p>
+              <p className="text-green-300 font-medium">
+                {getGuestDestination()}
+              </p>
+
+              {/* ✅ Countdown display */}
+              <div className="mt-4">
+                <div className="text-3xl font-bold text-green-400 mb-2">
+                  {countdown}
+                </div>
+                <div className="w-full bg-gray-700 rounded-full h-2">
+                  <div
+                    className="bg-green-500 h-2 rounded-full transition-all duration-1000"
+                    style={{ width: `${((2 - countdown) / 2) * 100}%` }}
+                  ></div>
+                </div>
+                <p className="text-green-400 text-sm mt-2">
+                  วินาทีเพื่อเปลี่ยนหน้าอัตโนมัติ
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {/* ✅ Go now button */}
+              <button
+                onClick={handleGuestAccess}
+                className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition-colors"
+              >
+                ไปเลยตอนนี้ →
+              </button>
+
+              {/* ✅ Cancel auto-redirect button */}
+              <button
+                onClick={cancelAutoRedirect}
+                className="w-full bg-gray-600 hover:bg-gray-700 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm"
+              >
+                ยกเลิกการเปลี่ยนหน้าอัตโนมัติ
+              </button>
+
+              {/* ✅ Alternative option */}
+              <button
+                onClick={() => {
+                  cancelAutoRedirect();
+                  router.push("/cars");
+                }}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm"
+              >
+                ดูรถยนต์ทั้งหมดแทน
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="max-w-md w-full space-y-8">
-        {/* ✅ Enhanced LIFF guest options with original URL info */}
-        {isLiffApp && guestUser && (
+        {/* ✅ Enhanced LIFF guest options (shown only if not auto-redirecting) */}
+        {isLiffApp && guestUser && !shouldAutoRedirect && (
           <div className="mb-4 p-4 bg-green-500/20 border border-green-500/30 rounded">
             <div className="text-center text-green-300">
               <p className="text-lg mb-2">🎉 ยินดีต้อนรับ {guestUser.name}!</p>
@@ -194,55 +270,57 @@ export default function LoginPage() {
           </div>
         )}
 
-        {/* Login Section */}
-        <div className="bg-white rounded-lg shadow-xl p-8">
-          <div className="text-center mb-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">
-              {isLiffApp ? "หรือเข้าสู่ระบบ" : "ยินดีต้อนรับ"}
-            </h2>
-            <p className="text-gray-600">
-              {isLiffApp
-                ? "เพื่อใช้ฟีเจอร์พิเศษและบันทึกข้อมูล"
-                : "เข้าสู่ระบบเพื่อดูข้อมูลรถยนต์และติดต่อเจ้าหน้าที่"}
-            </p>
-          </div>
-
-          {/* Conditional Login Form */}
-          {showCredentialsForm ? (
-            <>
-              <div className="mb-4 p-3 bg-blue-500/20 border border-blue-500/30 rounded text-blue-700 text-sm">
-                เพื่อเชื่อมต่อบัญชี LINE ของคุณ
-                กรุณาเข้าสู่ระบบด้วยบัญชีผู้ใช้และรหัสผ่านของคุณก่อน
-              </div>
-              <LoginForm lineUserIdToLink={lineUserId} />
-            </>
-          ) : (
-            /* Show normal login options */
-            <div className="space-y-4">
-              {!isLiffApp && <LineLoginBtn />}
-
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-300" />
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-white text-gray-500">
-                    {isLiffApp ? "สำหรับพนักงาน" : "หรือ"}
-                  </span>
-                </div>
-              </div>
-
-              <div className="text-center">
-                <a
-                  href="/login/internal"
-                  className="text-sm text-blue-600 hover:text-blue-500 font-medium"
-                >
-                  เข้าสู่ระบบสำหรับพนักงาน
-                </a>
-              </div>
+        {/* Login Section - Only show if not auto-redirecting */}
+        {!shouldAutoRedirect && (
+          <div className="bg-white rounded-lg shadow-xl p-8">
+            <div className="text-center mb-6">
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                {isLiffApp ? "หรือเข้าสู่ระบบ" : "ยินดีต้อนรับ"}
+              </h2>
+              <p className="text-gray-600">
+                {isLiffApp
+                  ? "เพื่อใช้ฟีเจอร์พิเศษและบันทึกข้อมูล"
+                  : "เข้าสู่ระบบเพื่อดูข้อมูลรถยนต์และติดต่อเจ้าหน้าที่"}
+              </p>
             </div>
-          )}
-        </div>
+
+            {/* Conditional Login Form */}
+            {showCredentialsForm ? (
+              <>
+                <div className="mb-4 p-3 bg-blue-500/20 border border-blue-500/30 rounded text-blue-700 text-sm">
+                  เพื่อเชื่อมต่อบัญชี LINE ของคุณ
+                  กรุณาเข้าสู่ระบบด้วยบัญชีผู้ใช้และรหัสผ่านของคุณก่อน
+                </div>
+                <LoginForm lineUserIdToLink={lineUserId} />
+              </>
+            ) : (
+              /* Show normal login options */
+              <div className="space-y-4">
+                {!isLiffApp && <LineLoginBtn />}
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-gray-300" />
+                  </div>
+                  <div className="relative flex justify-center text-sm">
+                    <span className="px-2 bg-white text-gray-500">
+                      {isLiffApp ? "สำหรับพนักงาน" : "หรือ"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="text-center">
+                  <a
+                    href="/login/internal"
+                    className="text-sm text-blue-600 hover:text-blue-500 font-medium"
+                  >
+                    เข้าสู่ระบบสำหรับพนักงาน
+                  </a>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Footer */}
         <div className="text-center text-green-200 text-sm">

@@ -8,7 +8,8 @@ export function useLiffAutoLogin() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [guestUser, setGuestUser] = useState(null);
-  const [originalUrl, setOriginalUrl] = useState(null); // ✅ Track original URL
+  const [originalUrl, setOriginalUrl] = useState(null);
+  const [shouldAutoRedirect, setShouldAutoRedirect] = useState(false); // ✅ Add auto-redirect flag
   const router = useRouter();
 
   useEffect(() => {
@@ -55,7 +56,7 @@ export function useLiffAutoLogin() {
               name: profile.displayName,
               pictureUrl: profile.pictureUrl,
               platform: "liff",
-              originalUrl: storedOriginalUrl, // ✅ Include original URL
+              originalUrl: storedOriginalUrl,
               loginTime: new Date().toISOString(),
             };
 
@@ -71,6 +72,12 @@ export function useLiffAutoLogin() {
               "[LIFF] Guest user setup complete with original URL:",
               storedOriginalUrl
             );
+
+            // ✅ Enable auto-redirect if we have an original URL and we're on login page
+            if (storedOriginalUrl && window.location.pathname === "/login") {
+              console.log("[LIFF] Auto-redirect enabled for guest user");
+              setShouldAutoRedirect(true);
+            }
           } else {
             console.log("[LIFF] User not logged in to LINE");
           }
@@ -90,6 +97,24 @@ export function useLiffAutoLogin() {
     initLiff();
   }, []);
 
+  // ✅ Auto-redirect effect for LIFF guests
+  useEffect(() => {
+    if (shouldAutoRedirect && guestUser && originalUrl && !error) {
+      const autoRedirectDelay = 2000; // 2 seconds delay to show welcome message
+
+      console.log(
+        "[LIFF] Auto-redirecting guest to original URL in 2 seconds:",
+        originalUrl
+      );
+
+      const timer = setTimeout(() => {
+        navigateToOriginalUrl();
+      }, autoRedirectDelay);
+
+      return () => clearTimeout(timer);
+    }
+  }, [shouldAutoRedirect, guestUser, originalUrl, error]);
+
   // ✅ Function to navigate to original URL or fallback
   const navigateToOriginalUrl = (fallbackUrl = "/cars") => {
     const targetUrl = originalUrl || fallbackUrl;
@@ -106,13 +131,21 @@ export function useLiffAutoLogin() {
     return originalUrl || sessionStorage.getItem("liff_original_url");
   };
 
+  // ✅ Function to cancel auto-redirect
+  const cancelAutoRedirect = () => {
+    setShouldAutoRedirect(false);
+    console.log("[LIFF] Auto-redirect cancelled by user");
+  };
+
   return {
     isLiffApp,
     isLoading,
     error,
     guestUser,
-    originalUrl, // ✅ Expose original URL
-    navigateToOriginalUrl, // ✅ Helper function
-    getOriginalUrl, // ✅ Getter function
+    originalUrl,
+    shouldAutoRedirect, // ✅ Expose auto-redirect state
+    navigateToOriginalUrl,
+    getOriginalUrl,
+    cancelAutoRedirect, // ✅ Expose cancel function
   };
 }
