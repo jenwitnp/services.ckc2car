@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation";
 export default function LoginPage() {
   const [errorType, setErrorType] = useState(null);
   const [lineUserId, setLineUserId] = useState(null);
-  const { isLiffApp, isLoading, error } = useLiffAutoLogin();
+  const { isLiffApp, isLoading, error, originalUrl } = useLiffAutoLogin();
   const { data: session, status } = useSession();
   const router = useRouter();
 
@@ -28,23 +28,33 @@ export default function LoginPage() {
         );
         router.push("/dashboard");
       } else {
-        console.log("[Login] Customer authenticated, redirecting to cars");
-        router.push("/cars");
+        // ✅ Use original URL if available, otherwise go to cars
+        const targetUrl = originalUrl || "/cars";
+        console.log(
+          "[Login] Customer authenticated, redirecting to:",
+          targetUrl
+        );
+        router.push(targetUrl);
+        if (originalUrl) {
+          sessionStorage.removeItem("liff_original_url");
+        }
       }
     }
-  }, [session, status, router]);
+  }, [session, status, router, originalUrl]);
 
-  // ✅ For LIFF users, redirect immediately to cars if no original URL
+  // ✅ For LIFF users, redirect to original URL or cars
   useEffect(() => {
     if (isLiffApp && !isLoading && !session && !error) {
       const storedOriginalUrl = sessionStorage.getItem("liff_original_url");
 
-      // If no stored original URL, redirect to cars immediately
-      if (!storedOriginalUrl) {
-        console.log(
-          "[Login] LIFF user with no original URL, redirecting to cars"
-        );
-        router.replace("/cars");
+      // ✅ Use stored original URL or fallback to cars
+      const targetUrl = storedOriginalUrl || "/cars";
+      console.log("[Login] LIFF user redirecting to:", targetUrl);
+      router.replace(targetUrl);
+
+      // Clear the stored URL after using it
+      if (storedOriginalUrl) {
+        sessionStorage.removeItem("liff_original_url");
       }
     }
   }, [isLiffApp, isLoading, session, error, router]);
@@ -78,10 +88,12 @@ export default function LoginPage() {
     );
   }
 
-  // ✅ For LIFF errors, redirect to cars anyway
+  // ✅ For LIFF errors, redirect to original URL or cars
   if (isLiffApp && error) {
+    const targetUrl = originalUrl || "/cars";
+
     setTimeout(() => {
-      router.replace("/cars");
+      router.replace(targetUrl);
     }, 2000);
 
     return (
@@ -94,7 +106,7 @@ export default function LoginPage() {
             หากไม่เปลี่ยนหน้าอัตโนมัติ
           </p>
           <button
-            onClick={() => router.replace("/cars")}
+            onClick={() => router.replace(targetUrl)}
             className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
           >
             คลิกที่นี่
@@ -120,10 +132,12 @@ export default function LoginPage() {
     );
   }
 
-  // ✅ If LIFF user reaches here, something went wrong, redirect to cars
+  // ✅ If LIFF user reaches here, redirect to original URL or cars
   if (isLiffApp) {
+    const targetUrl = originalUrl || "/cars";
+
     setTimeout(() => {
-      router.replace("/cars");
+      router.replace(targetUrl);
     }, 1000);
 
     return (

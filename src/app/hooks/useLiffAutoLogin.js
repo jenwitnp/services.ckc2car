@@ -7,6 +7,7 @@ export function useLiffAutoLogin() {
   const [isLiffApp, setIsLiffApp] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [originalUrl, setOriginalUrl] = useState(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -31,8 +32,17 @@ export function useLiffAutoLogin() {
             setIsLiffApp(true);
           }
 
-          // ✅ Get the original URL from sessionStorage
-          const storedOriginalUrl = sessionStorage.getItem("liff_original_url");
+          // ✅ Get the original URL from sessionStorage or current path
+          let storedOriginalUrl = sessionStorage.getItem("liff_original_url");
+
+          // ✅ If no stored URL and we're not on login, use current path
+          if (!storedOriginalUrl && currentPath !== "/login") {
+            storedOriginalUrl = currentPath;
+            sessionStorage.setItem("liff_original_url", currentPath);
+            console.log("[LIFF] Stored original URL:", currentPath);
+          }
+
+          setOriginalUrl(storedOriginalUrl);
 
           // ✅ If on login page but have an original URL, redirect immediately
           if (currentPath === "/login" && storedOriginalUrl) {
@@ -43,12 +53,6 @@ export function useLiffAutoLogin() {
             router.replace(storedOriginalUrl);
             sessionStorage.removeItem("liff_original_url");
             return; // Exit early, don't set loading to false
-          }
-
-          // ✅ If not on login page, store current path as original URL
-          if (currentPath !== "/login") {
-            sessionStorage.setItem("liff_original_url", currentPath);
-            console.log("[LIFF] Stored original URL:", currentPath);
           }
         } else {
           console.log("[LIFF] Not in LIFF environment");
@@ -70,5 +74,6 @@ export function useLiffAutoLogin() {
     isLiffApp,
     isLoading,
     error,
+    originalUrl,
   };
 }
