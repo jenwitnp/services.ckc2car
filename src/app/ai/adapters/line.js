@@ -341,18 +341,17 @@ function createLiffUrl(path) {
 }
 
 // ✅ Enhanced version with proper car detail URL generation
+// ✅ Enhanced car item with copy and share buttons
 function createEnhancedCarResponse(summary, cars, totalCount, query = null) {
   const liffId = process.env.LINE_LIFF_ID;
 
   if (!liffId) {
-    // Fallback to simple text response
     return createSimpleCarTextResponse(summary, cars, totalCount);
   }
 
-  // Create Flex Message with LIFF integration
   const carItems = cars.slice(0, 3).map((car, index) => {
-    // ✅ Generate proper car detail URL
     const carDetailUrl = generateCarDetailUrl(car);
+    const liffUrl = createLiffUrl(carDetailUrl);
 
     return {
       type: "box",
@@ -435,17 +434,67 @@ function createEnhancedCarResponse(summary, cars, totalCount, query = null) {
             },
           ],
         },
+
+        // ✅ Enhanced button layout with multiple actions
+        {
+          type: "box",
+          layout: "horizontal",
+          margin: "md",
+          spacing: "sm",
+          contents: [
+            {
+              type: "button",
+              style: "primary",
+              height: "sm",
+              color: "#4ECDC4",
+              flex: 2,
+              action: {
+                type: "uri",
+                label: "ดูรายละเอียด",
+                uri: liffUrl,
+              },
+            },
+            {
+              type: "button",
+              style: "secondary",
+              height: "sm",
+              color: "#666666",
+              flex: 1,
+              action: {
+                type: "clipboard",
+                clipboardText: liffUrl,
+              },
+              // ✅ For LINE that doesn't support clipboard, use postback
+              fallbackAction: {
+                type: "postback",
+                label: "Copy Link",
+                data: `action=copy_link&url=${encodeURIComponent(
+                  liffUrl
+                )}&car_id=${car.id}`,
+                displayText: "📋 คัดลอกลิงก์แล้ว",
+              },
+            },
+          ],
+        },
+
+        // ✅ Additional share button
         {
           type: "button",
-          style: "primary",
+          style: "link",
           height: "sm",
-          color: "#4ECDC4",
-          margin: "md",
+          margin: "sm",
           action: {
-            type: "uri",
-            label: "ดูรายละเอียด",
-            // ✅ Use the proper SEO-friendly URL
-            uri: createLiffUrl(carDetailUrl),
+            type: "share",
+            uri: liffUrl,
+          },
+          // ✅ Fallback for older LINE versions
+          fallbackAction: {
+            type: "postback",
+            label: "Share Link",
+            data: `action=share_link&url=${encodeURIComponent(
+              liffUrl
+            )}&car_id=${car.id}`,
+            displayText: "🔗 แชร์ลิงก์",
           },
         },
       ],

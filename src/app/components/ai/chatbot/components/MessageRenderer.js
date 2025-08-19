@@ -146,7 +146,7 @@ const CarCard = React.memo(({ part, rawData }) => {
   if (!textToShow) return null;
 
   return (
-    <div className="my-3 p-4 bg-white/60 rounded-xl border border-gray-200/60 shadow-sm">
+    <div className="my-3 p-4 bg-main-800 rounded-xl border border-gray-200/60 shadow-sm">
       <div className="whitespace-pre-wrap mb-3">🚗 {textToShow}</div>
 
       <div className="flex flex-wrap gap-2">
