@@ -6,7 +6,7 @@ import { useLiffGuest } from "../contexts/LiffGuestProvider";
 // ✅ LIFF Loading Component
 function LiffLoadingScreen() {
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-green-900 via-blue-900 to-purple-900 flex items-center justify-center z-50">
+    <div className="fixed inset-0  flex items-center justify-center z-50">
       <div className="text-center">
         {/* ✅ Animated LIFF Logo */}
         <div className="mb-8">

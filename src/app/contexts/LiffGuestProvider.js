@@ -114,12 +114,7 @@ export function LiffGuestProvider({ children }) {
         setLoadingStatus("error"); // ✅ Update status
       } finally {
         // ✅ Ensure minimum loading time for better UX
-        setTimeout(
-          () => {
-            setIsLoading(false);
-          },
-          isLiffApp ? 1500 : 500
-        );
+        setIsLoading(false);
       }
     };
 
