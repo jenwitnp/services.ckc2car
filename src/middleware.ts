@@ -6,54 +6,63 @@ export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   try {
-    // ✅ Define public routes that don't require authentication
+    // ✅ Define public routes (accessible to everyone including LIFF guests)
     const publicRoutes = [
       "/",
       "/ai-chat",
       "/login",
-      "/cars", // Cars listing page
-      "/cars/search", // Cars search page
+      "/login/internal",
+      "/cars", // ✅ Cars are public for LIFF guests
     ];
 
-    // ✅ Define public path patterns
-    const publicPatterns = [
-      /^\/cars\/[^\/]+$/, // Individual car pages: /cars/toyota-camry-2020-123
-      /^\/cars\/search/, // All search pages: /cars/search?q=...
+    const internalOnlyRoutes = [
+      "/dashboard",
+      "/admin",
+      "/appointments",
+      "/analytics",
+      "/settings",
     ];
 
-    // Check if current path is public
+    // ✅ Check if current path is public (including car detail pages)
     const isPublicRoute =
-      publicRoutes.includes(pathname) ||
-      publicPatterns.some((pattern) => pattern.test(pathname));
+      publicRoutes.some((route) => pathname.startsWith(route)) ||
+      pathname.startsWith("/cars/");
 
-    // Get the token from the request
+    // ✅ Allow all public routes without authentication
+    if (isPublicRoute) {
+      return NextResponse.next();
+    }
+
+    // Get the token from the request (for protected routes only)
     const token = await getToken({
       req: request,
       secret: process.env.NEXTAUTH_SECRET,
     });
 
-    // If user is authenticated and trying to access login page, redirect to home
-    if (token && pathname === "/login") {
-      return NextResponse.redirect(new URL("/", request.url));
-    }
-
-    // If not authenticated and trying to access protected routes, redirect to /login
-    if (!token && !isPublicRoute) {
+    // Handle unauthenticated users trying to access protected routes
+    if (!token) {
+      if (internalOnlyRoutes.some((route) => pathname.startsWith(route))) {
+        return NextResponse.redirect(new URL("/login/internal", request.url));
+      }
       return NextResponse.redirect(new URL("/login", request.url));
     }
 
-    // ✅ Handle old car detail URLs
-    if (
-      pathname.startsWith("/cars/detail/") ||
-      pathname.startsWith("/car/detail/")
-    ) {
-      const carId = pathname.split("/").pop();
+    // Handle authenticated users
+    if (token) {
+      const userType = token.user?.userType;
 
-      if (carId && /^\d+$/.test(carId)) {
-        // For now, redirect to a temporary URL pattern
-        // This would ideally fetch the car data to generate proper slug
-        const newUrl = new URL(`/cars/temp-${carId}`, request.url);
-        return NextResponse.redirect(newUrl, 301);
+      // Redirect internal users accessing wrong login pages
+      if (userType === "internal") {
+        if (pathname === "/login" || pathname === "/login/internal") {
+          return NextResponse.redirect(new URL("/dashboard", request.url));
+        }
+      }
+
+      // Prevent non-internal users from accessing internal routes
+      if (internalOnlyRoutes.some((route) => pathname.startsWith(route))) {
+        if (userType !== "internal") {
+          return NextResponse.redirect(new URL("/cars", request.url));
+        }
       }
     }
 
@@ -61,27 +70,18 @@ export async function middleware(request: NextRequest) {
   } catch (error) {
     console.error("Middleware error:", error);
 
-    // If error getting token, check if it's a public route
-    const isPublicRoute =
-      pathname === "/login" || pathname.startsWith("/cars/");
-
-    if (!isPublicRoute) {
-      return NextResponse.redirect(new URL("/login", request.url));
+    // On error, allow public routes, redirect others to login
+    if (isPublicRoute) {
+      return NextResponse.next();
     }
-    return NextResponse.next();
+
+    if (internalOnlyRoutes.some((route) => pathname.startsWith(route))) {
+      return NextResponse.redirect(new URL("/login/internal", request.url));
+    }
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 }
 
-// ✅ Updated matcher to be more specific
 export const config = {
-  matcher: [
-    /*
-      Match specific routes for authentication:
-      - All routes except public ones
-      - Still include car detail redirects
-    */
-    "/((?!login|api|_next|static|favicon.ico|robots.txt).*)",
-    "/cars/detail/:path*",
-    "/car/detail/:path*",
-  ],
+  matcher: ["/((?!api|_next|static|favicon.ico|robots.txt).*)"],
 };
