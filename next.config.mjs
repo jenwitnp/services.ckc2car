@@ -45,6 +45,11 @@ const nextConfig = {
         hostname: "via.placeholder.com",
         pathname: "/**",
       },
+      {
+        protocol: "https",
+        hostname: "profile.line-scdn.net",
+        pathname: "/**",
+      },
     ],
     // ✅ Handle broken images gracefully
     dangerouslyAllowSVG: true,

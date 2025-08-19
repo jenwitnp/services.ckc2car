@@ -60,7 +60,7 @@ export default function LoginPage() {
   // Show loading while LIFF is initializing or session is loading
   if (isLoading || status === "loading") {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen w-full bg-gradient-to-br from-green-600 to-green-900">
+      <div className="flex flex-col items-center justify-center min-h-screen w-full ">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-white mx-auto mb-4"></div>
           <p className="text-white text-lg">
@@ -75,7 +75,7 @@ export default function LoginPage() {
   // Show error if LIFF initialization failed
   if (isLiffApp && error) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen w-full bg-gradient-to-br from-green-600 to-green-900">
+      <div className="flex flex-col items-center justify-center min-h-screen w-full ">
         <div className="text-center bg-red-500/20 border border-red-500/30 rounded-lg p-6 m-4">
           <p className="text-red-300 text-lg mb-2">
             เกิดข้อผิดพลาดในการเตรียม LIFF
@@ -95,7 +95,7 @@ export default function LoginPage() {
   // Don't show login form if user is already authenticated
   if (session?.user) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen w-full bg-gradient-to-br from-green-600 to-green-900">
+      <div className="flex flex-col items-center justify-center min-h-screen w-full ">
         <div className="text-center">
           <p className="text-white text-lg">กำลังเปลี่ยนหน้า...</p>
         </div>
@@ -104,23 +104,8 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-600 to-green-900 flex items-center justify-center px-4">
+    <div className="min-h-screen  flex items-center justify-center px-4">
       <div className="max-w-md w-full space-y-8">
-        {/* Logo and Company Name */}
-        <div className="text-center">
-          <div className="mx-auto h-24 w-24 bg-white rounded-full flex items-center justify-center mb-4">
-            <Image
-              src="/logo-ckc.png"
-              alt="CKC Logo"
-              width={60}
-              height={60}
-              className="object-contain"
-            />
-          </div>
-          <h1 className="text-3xl font-bold text-white mb-2">CKC SERVICES</h1>
-          <p className="text-green-300">ศูนย์บริการข้อมูลรถยนต์</p>
-        </div>
-
         {/* ✅ Show LIFF guest options */}
         {isLiffApp && guestUser && (
           <div className="mb-4 p-4 bg-green-500/20 border border-green-500/30 rounded">

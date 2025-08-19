@@ -8,8 +8,6 @@ export async function middleware(request: NextRequest) {
   try {
     // ✅ Define public routes (accessible to everyone including LIFF guests)
     const publicRoutes = [
-      "/",
-      "/ai-chat",
       "/login",
       "/login/internal",
       "/cars", // ✅ Cars are public for LIFF guests
@@ -61,7 +59,7 @@ export async function middleware(request: NextRequest) {
       // Prevent non-internal users from accessing internal routes
       if (internalOnlyRoutes.some((route) => pathname.startsWith(route))) {
         if (userType !== "internal") {
-          return NextResponse.redirect(new URL("/cars", request.url));
+          return NextResponse.redirect(new URL("/", request.url));
         }
       }
     }

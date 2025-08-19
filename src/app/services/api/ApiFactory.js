@@ -83,5 +83,67 @@ export class ApiFactory {
   }
 }
 
+// Add to your existing cars service
+const carsService = {
+  // ... existing methods ...
+
+  // ✅ New method for getting all cars
+  async getAll(params = {}) {
+    try {
+      const {
+        page = 1,
+        limit = 12,
+        sort = "created_at",
+        order = "desc",
+        ...filters
+      } = params;
+
+      // Build query string
+      const queryParams = new URLSearchParams({
+        page: page.toString(),
+        limit: limit.toString(),
+        sort,
+        order,
+        ...filters,
+      });
+
+      console.log(`[CarsService] Fetching all cars with params:`, params);
+
+      const response = await ckc2carClient.get(`/cars?${queryParams}`);
+
+      if (!response.data) {
+        throw new Error("No data received from cars API");
+      }
+
+      return {
+        success: true,
+        data: response.data.data || [],
+        pagination: response.data.pagination || {
+          page,
+          limit,
+          totalCount: 0,
+          totalPages: 0,
+        },
+      };
+    } catch (error) {
+      console.error("[CarsService] Error fetching all cars:", error);
+
+      return {
+        success: false,
+        error: error.message || "Failed to fetch cars",
+        data: [],
+        pagination: {
+          page: 1,
+          limit: 12,
+          totalCount: 0,
+          totalPages: 0,
+        },
+      };
+    }
+  },
+
+  // ... rest of your existing methods
+};
+
 // Export singleton instance
 export const apiFactory = new ApiFactory();

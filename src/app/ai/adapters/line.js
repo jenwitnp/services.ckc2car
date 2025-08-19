@@ -6,9 +6,33 @@ import { importantKeywords } from "@/app/ai/services/conversations/keywords/Impo
 import { conversationDb } from "@/app/ai/services/conversations/ConversationDatabaseService.js";
 // ✅ Import the URL utilities to generate proper car URLs
 import { getCarDetailUrl } from "@/app/utils/urlUtils.server";
+// 🚀 Import performance optimizations
+import { aiResponseCache } from "@/app/ai/services/cache/AIResponseCache.js";
+import {
+  performanceMonitor,
+  timeOperation,
+} from "@/app/ai/services/monitoring/PerformanceMonitor.js";
 
 export async function processLineRequest(text, context = {}) {
+  const startTime = Date.now();
+
   try {
+    // 🚀 STEP 1: Check AI response cache first
+    const cacheKey = aiResponseCache.generateKey(text, context);
+    const cachedResponse = aiResponseCache.get(cacheKey);
+
+    if (cachedResponse) {
+      const duration = Date.now() - startTime;
+      performanceMonitor.recordRequest(duration, true);
+      performanceMonitor.recordCache(true); // Cache hit
+
+      console.log(`[LINE] Cache HIT! Response time: ${duration}ms`);
+      return cachedResponse;
+    }
+
+    // Cache miss - proceed with normal processing
+    performanceMonitor.recordCache(false);
+
     // 🧹 Random background cleanup
     if (conversationDb.shouldTriggerCleanup()) {
       conversationDb
@@ -18,49 +42,80 @@ export async function processLineRequest(text, context = {}) {
         );
     }
 
-    // 🎯 STEP 1: Smart context loading
-    let messages = [];
-    const needsHistory = importantKeywords.needsHistory(text);
+    // 🎯 STEP 2: Smart context loading with performance monitoring
+    const [messages, contextData] = await Promise.all([
+      timeOperation("line-context-loading", async () => {
+        let messages = [];
+        const needsHistory = importantKeywords.needsHistory(text);
 
-    if (needsHistory) {
-      console.log(`[LINE] Loading context from database for complex query`);
-      const dbResult = await conversationDb.loadMinimalContext(
-        context.userId,
-        "web"
-      );
+        if (needsHistory) {
+          console.log(`[LINE] Loading context from database for complex query`);
+          const dbResult = await conversationDb.loadMinimalContext(
+            context.userId,
+            "line" // ✅ Fixed: use "line" instead of "web"
+          );
 
-      if (dbResult.success) {
-        messages = dbResult.messages;
-        // Add to cache for future use
-        messages.forEach((msg) =>
-          conversationCache.addMessage(context.userId, msg)
-        );
-      } else {
-        console.error(`[LINE] Failed to load DB context: ${dbResult.error}`);
-        messages = conversationCache.getMessages(context.userId);
-      }
-    } else {
-      // 🚀 STEP 2: Get from memory cache
-      messages = conversationCache.getMessages(context.userId);
-      console.log(`[LINE] Using ${messages.length} cached messages`);
-    }
+          if (dbResult.success) {
+            messages = dbResult.messages;
+            // Add to cache for future use
+            messages.forEach((msg) =>
+              conversationCache.addMessage(context.userId, msg)
+            );
+          } else {
+            console.error(
+              `[LINE] Failed to load DB context: ${dbResult.error}`
+            );
+            messages = conversationCache.getMessages(context.userId);
+          }
+        } else {
+          // 🚀 Get from memory cache
+          messages = conversationCache.getMessages(context.userId);
+          console.log(`[LINE] Using ${messages.length} cached messages`);
+        }
 
-    // Add current user message
-    const userMessage = { role: "user", content: text };
-    messages.push(userMessage);
+        // Add current user message
+        const userMessage = { role: "user", content: text };
+        messages.push(userMessage);
+
+        return messages;
+      }),
+
+      // Load context in parallel (if needed)
+      Promise.resolve(context),
+    ]);
 
     console.log(`[LINE Adapter] Processing with ${messages.length} messages`);
 
-    // 🤖 STEP 3: Process AI request
-    const aiResponse = await processAIRequest(messages, context, "line", {
-      temperature: 0.6,
-      maxTokens: 500,
-    });
+    // 🤖 STEP 3: Process AI request with timeout protection
+    const aiResponse = await Promise.race([
+      timeOperation("line-ai-processing", async () => {
+        return await processAIRequest(messages, contextData, "line", {
+          temperature: 0.6,
+          maxTokens: 500,
+        });
+      }),
+
+      // Timeout protection
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("AI_TIMEOUT")), 8000)
+      ),
+    ]);
 
     // Handle function calls (your existing logic)
-    const processedResponse = await handleAIResponse(aiResponse, context, text);
+    const processedResponse = await timeOperation(
+      "line-function-handling",
+      async () => {
+        return await handleAIResponse(aiResponse, contextData, text);
+      }
+    );
 
-    // 🎯 STEP 4: Cache management
+    // 🎯 STEP 4: Cache successful responses
+    if (aiResponseCache.shouldCache(processedResponse, text)) {
+      aiResponseCache.set(cacheKey, processedResponse);
+    }
+
+    // 🎯 STEP 5: Cache management
+    const userMessage = { role: "user", content: text };
     conversationCache.addMessage(context.userId, userMessage);
 
     const assistantMessage = {
@@ -73,32 +128,55 @@ export async function processLineRequest(text, context = {}) {
 
     conversationCache.addMessage(context.userId, assistantMessage);
 
-    // 🎯 STEP 5: Selective database saving
+    // 🎯 STEP 6: Selective database saving
     if (importantKeywords.shouldSaveToDatabase(text, processedResponse)) {
       console.log(`[LINE] Saving important conversation to database`);
 
-      const saveResult = await conversationDb.saveImportantConversation(
-        context.userId,
-        userMessage,
-        assistantMessage,
-        {
-          functionCallData: processedResponse.functionCall || null,
-          importance: "high",
-        }
-      );
-
-      if (!saveResult.success) {
-        console.error(
-          `[LINE] Failed to save conversation: ${saveResult.error}`
+      await timeOperation("line-db-save", async () => {
+        const saveResult = await conversationDb.saveImportantConversation(
+          context.userId,
+          userMessage,
+          assistantMessage,
+          {
+            functionCallData: processedResponse.functionCall || null,
+            importance: "high",
+            platform: "line", // ✅ Fixed: use "line" platform
+          }
         );
-      }
+
+        if (!saveResult.success) {
+          console.error(
+            `[LINE] Failed to save conversation: ${saveResult.error}`
+          );
+        }
+      });
     } else {
       console.log(`[LINE] Skipping DB save - casual conversation`);
     }
 
+    // Record successful request
+    const totalDuration = Date.now() - startTime;
+    performanceMonitor.recordRequest(totalDuration, true);
+
+    console.log(`[LINE] Total processing time: ${totalDuration}ms`);
     return processedResponse;
   } catch (error) {
+    const totalDuration = Date.now() - startTime;
+
+    if (error.message === "AI_TIMEOUT") {
+      console.warn(`[LINE] AI timeout after ${totalDuration}ms`);
+      performanceMonitor.recordAI(totalDuration, false, true); // timeout = true
+      performanceMonitor.recordRequest(totalDuration, false);
+
+      return {
+        type: "text",
+        text: "ขออภัยค่ะ ระบบใช้เวลานานเกินไป กรุณาลองใหม่อีกครั้งค่ะ",
+      };
+    }
+
     console.error("[LINE Adapter] Error:", error);
+    performanceMonitor.recordRequest(totalDuration, false);
+
     return {
       type: "text",
       text: "ขออภัยค่ะ เกิดข้อผิดพลาดในการประมวลผล กรุณาลองใหม่อีกครั้งค่ะ",
@@ -233,11 +311,34 @@ export function searchConversations(searchTerm, options = {}) {
   return conversationDb.searchConversations(searchTerm, options);
 }
 
+// 🚀 NEW: Performance monitoring exports
+export function getAICacheStats() {
+  return aiResponseCache.getStats();
+}
+
+export function getPerformanceStats() {
+  return performanceMonitor.getStats();
+}
+
+export function getPerformanceReport() {
+  return performanceMonitor.generateReport();
+}
+
+export function clearAICache() {
+  return aiResponseCache.clear();
+}
+
+export function clearUserAICache(userId) {
+  return aiResponseCache.clearUser(userId);
+}
+
 export function getSystemStatus() {
   return {
     cache: conversationCache.getStats(),
     database: conversationDb.getServiceStatus(),
     keywords: importantKeywords.getAllKeywords(),
+    aiCache: aiResponseCache.getStats(), // 🚀 NEW
+    performance: performanceMonitor.getStats(), // 🚀 NEW
   };
 }
 
