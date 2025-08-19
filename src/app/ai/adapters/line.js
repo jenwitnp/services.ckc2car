@@ -305,7 +305,7 @@ function createLiffUrl(path) {
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
 
   // Create LIFF URL
-  const liffUrl = `https://liff.line.me/${liffId}${cleanPath}`;
+  const liffUrl = `https://liff.line.me/${liffId}/cars${cleanPath}`;
 
   return liffUrl;
 }
