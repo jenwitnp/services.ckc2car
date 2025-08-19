@@ -9,7 +9,6 @@ export async function middleware(request: NextRequest) {
   try {
     // ✅ Define public routes accessible to everyone (including LIFF guests)
     const publicRoutes = [
-      "/",
       "/login",
       "/login/internal",
       "/cars",
