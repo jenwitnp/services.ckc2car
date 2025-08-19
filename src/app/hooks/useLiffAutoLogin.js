@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 export function useLiffAutoLogin() {
   const [isLiffApp, setIsLiffApp] = useState(false);
@@ -10,7 +10,6 @@ export function useLiffAutoLogin() {
   const [guestUser, setGuestUser] = useState(null);
   const [originalUrl, setOriginalUrl] = useState(null); // ✅ Track original URL
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   useEffect(() => {
     const initLiff = async () => {

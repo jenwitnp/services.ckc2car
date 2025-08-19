@@ -240,3 +240,89 @@ export async function updateData(table, data, filters) {
     };
   }
 }
+
+/**
+ * Delete data from a Supabase table based on filters
+ * @param {string} table The table name to delete from
+ * @param {object} filters Filters to specify which rows to delete
+ * @returns {object} Result object with success status and count of deleted rows
+ */
+export async function deleteData(table, filters = {}) {
+  if (!filters || Object.keys(filters).length === 0) {
+    console.error(`Error deleting data from ${table}: No filters provided.`);
+    return {
+      success: false,
+      error: "Delete operation requires at least one filter for safety.",
+    };
+  }
+
+  try {
+    let query = supabase.from(table).delete();
+
+    // Apply filters
+    Object.entries(filters).forEach(([column, value]) => {
+      if (typeof value === "object" && value !== null) {
+        // Handle comparison operators like lt, gt, gte, lte
+        Object.entries(value).forEach(([operator, operatorValue]) => {
+          switch (operator) {
+            case "lt":
+              query = query.lt(column, operatorValue);
+              break;
+            case "lte":
+              query = query.lte(column, operatorValue);
+              break;
+            case "gt":
+              query = query.gt(column, operatorValue);
+              break;
+            case "gte":
+              query = query.gte(column, operatorValue);
+              break;
+            case "eq":
+              query = query.eq(column, operatorValue);
+              break;
+            case "neq":
+              query = query.neq(column, operatorValue);
+              break;
+            case "in":
+              query = query.in(column, operatorValue);
+              break;
+            default:
+              // Default to equality
+              query = query.eq(column, operatorValue);
+          }
+        });
+      } else if (Array.isArray(value)) {
+        // Handle array values with 'in' operator
+        query = query.in(column, value);
+      } else {
+        // Handle simple equality
+        query = query.eq(column, value);
+      }
+    });
+
+    const { data, error, count } = await query;
+
+    if (error) {
+      console.error(`Error deleting data from ${table}:`, error);
+      return {
+        success: false,
+        error: error.message,
+        details: error.details,
+      };
+    }
+
+    console.log(`Successfully deleted ${count || 0} rows from ${table}`);
+
+    return {
+      success: true,
+      count: count || 0,
+      data: data || [],
+    };
+  } catch (error) {
+    console.error(`Exception deleting data from ${table}:`, error);
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+}
