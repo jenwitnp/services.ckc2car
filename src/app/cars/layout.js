@@ -6,19 +6,19 @@ export default function CarsLayout({ children }) {
       {/* Main content container */}
       <div className="">
         {/* Page children content */}
-        <div className="rounded-xl mx-auto dark:bg-gray-800 shadow-lg">
+        <div className="rounded-xl mx-auto dark:bg-main-900 shadow-lg">
           {children}
         </div>
 
         {/* Footer section */}
-        <div className="mt-16 border-t border-gray-200 dark:border-gray-700 pt-8 text-center">
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+        <div className="mt-16 border-t border-main-200 dark:border-main-700 pt-8 text-center">
+          <p className="text-sm text-main-500 dark:text-main-400">
             © {new Date().getFullYear()} CKC Auto. All rights reserved.
           </p>
           <div className="mt-4 flex justify-center space-x-6">
             <a
               href="#"
-              className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
+              className="text-main-400 hover:text-main-500 dark:hover:text-main-300"
             >
               <span className="sr-only">Facebook</span>
               <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
@@ -31,7 +31,7 @@ export default function CarsLayout({ children }) {
             </a>
             <a
               href="#"
-              className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
+              className="text-main-400 hover:text-main-500 dark:hover:text-main-300"
             >
               <span className="sr-only">Instagram</span>
               <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
@@ -44,7 +44,7 @@ export default function CarsLayout({ children }) {
             </a>
             <a
               href="#"
-              className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
+              className="text-main-400 hover:text-main-500 dark:hover:text-main-300"
             >
               <span className="sr-only">YouTube</span>
               <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
