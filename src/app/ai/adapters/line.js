@@ -418,7 +418,8 @@ function createSimpleCarTextResponse(summary, cars, totalCount) {
 // Helper function to create LIFF URLs
 function createLiffUrl(path) {
   const liffId = process.env.LINE_LIFF_ID;
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://crm.ckc2car.com";
+  const baseUrl =
+    process.env.NEXT_PUBLIC_BASE_URL || "https://services.ckc2car.com";
 
   if (!liffId) {
     console.warn("LINE_LIFF_ID not configured, using direct URL");

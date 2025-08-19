@@ -1,57 +1,116 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import { useLiffAutoLogin } from "../hooks/useLiffAutoLogin";
+import { useRouter } from "next/navigation";
 
-const LiffGuestContext = createContext({});
+const LiffGuestContext = createContext();
 
 export function LiffGuestProvider({ children }) {
-  const { isLiffApp, guestUser, liffData } = useLiffAutoLogin();
-  const [currentUser, setCurrentUser] = useState(null);
+  const [isLiffApp, setIsLiffApp] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [guestUser, setGuestUser] = useState(null);
+  const router = useRouter();
 
   useEffect(() => {
-    if (isLiffApp && guestUser) {
-      // Check if guest user is stored in localStorage
-      const storedUser = localStorage.getItem("liff_guest_user");
-      if (storedUser) {
-        try {
-          const parsedUser = JSON.parse(storedUser);
-          setCurrentUser(parsedUser);
-        } catch (error) {
-          console.error("Error parsing stored guest user:", error);
-          setCurrentUser(guestUser);
+    const initLiff = async () => {
+      try {
+        const currentPath = window.location.pathname + window.location.search;
+        console.log("[LIFF Guest] Current path:", currentPath);
+
+        // ✅ Check if in LIFF environment
+        if (typeof window !== "undefined" && window.liff) {
+          console.log("[LIFF Guest] LIFF environment detected");
+          setIsLiffApp(true);
+
+          try {
+            await window.liff.init({
+              liffId: process.env.NEXT_PUBLIC_LINE_LIFF_ID,
+            });
+            console.log("[LIFF Guest] LIFF initialized successfully");
+
+            // ✅ Create guest user automatically
+            const guestUser = {
+              id: `guest_${Date.now()}`,
+              name: "ผู้เยี่ยมชม",
+              type: "guest",
+              platform: "liff",
+              isAuthenticated: false,
+              createdAt: new Date().toISOString(),
+            };
+
+            setGuestUser(guestUser);
+            console.log("[LIFF Guest] Guest user created:", guestUser);
+
+            // ✅ If on login page, get stored original URL and redirect immediately
+            if (currentPath === "/login") {
+              const storedUrl = sessionStorage.getItem("liff_original_url");
+              if (storedUrl) {
+                console.log(
+                  "[LIFF Guest] Auto-redirecting to stored URL:",
+                  storedUrl
+                );
+                sessionStorage.removeItem("liff_original_url");
+                router.replace(storedUrl);
+                return; // Exit early
+              } else {
+                // No stored URL, redirect to cars
+                console.log("[LIFF Guest] No stored URL, redirecting to cars");
+                router.replace("/cars");
+                return; // Exit early
+              }
+            } else {
+              // ✅ Not on login page, store current path as original URL for potential future use
+              sessionStorage.setItem("liff_original_url", currentPath);
+              console.log("[LIFF Guest] Stored current path:", currentPath);
+            }
+          } catch (liffError) {
+            console.warn("[LIFF Guest] LIFF init failed:", liffError);
+
+            // ✅ Even if LIFF fails, create guest user and redirect
+            const guestUser = {
+              id: `guest_${Date.now()}`,
+              name: "ผู้เยี่ยมชม",
+              type: "guest",
+              platform: "liff-fallback",
+              isAuthenticated: false,
+              createdAt: new Date().toISOString(),
+            };
+            setGuestUser(guestUser);
+
+            // ✅ If on login page, redirect immediately
+            if (currentPath === "/login") {
+              const storedUrl = sessionStorage.getItem("liff_original_url");
+              router.replace(storedUrl || "/cars");
+              return; // Exit early
+            }
+          }
+        } else {
+          console.log("[LIFF Guest] Not in LIFF environment");
+          setIsLiffApp(false);
         }
-      } else {
-        setCurrentUser(guestUser);
+      } catch (err) {
+        console.error("[LIFF Guest] Initialization error:", err);
+        setError(err.message);
+        setIsLiffApp(false);
+      } finally {
+        setIsLoading(false);
       }
-    }
-  }, [isLiffApp, guestUser]);
+    };
 
-  const loginAsGuest = () => {
-    if (guestUser) {
-      localStorage.setItem("liff_guest_user", JSON.stringify(guestUser));
-      setCurrentUser(guestUser);
-      return guestUser;
-    }
-    return null;
-  };
+    initLiff();
+  }, [router]);
 
-  const logoutGuest = () => {
-    localStorage.removeItem("liff_guest_user");
-    setCurrentUser(null);
+  const value = {
+    isLiffApp,
+    isLoading,
+    error,
+    guestUser,
+    isGuest: () => guestUser?.type === "guest",
   };
 
   return (
-    <LiffGuestContext.Provider
-      value={{
-        isLiffApp,
-        guestUser: currentUser,
-        liffData,
-        loginAsGuest,
-        logoutGuest,
-        isGuestLoggedIn: !!currentUser,
-      }}
-    >
+    <LiffGuestContext.Provider value={value}>
       {children}
     </LiffGuestContext.Provider>
   );

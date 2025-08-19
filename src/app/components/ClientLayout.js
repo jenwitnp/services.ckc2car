@@ -7,40 +7,23 @@ import RootLayoutClient from "./RootLayoutClient";
 import { UserSessionProvider } from "../contexts/UserSessionProvider";
 import { ModalProvider } from "../contexts/ModalProvider";
 import { CarParamsProvider } from "../contexts/CarParamsProvider";
-import { useLiffAutoLogin } from "../hooks/useLiffAutoLogin";
-
-function LiffWrapper({ children }) {
-  const { isLiffApp, isLoading } = useLiffAutoLogin();
-
-  // Don't render children until LIFF is initialized
-  if (isLiffApp && isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500 mx-auto mb-2"></div>
-          <p className="text-gray-600">เตรียมแอป...</p>
-        </div>
-      </div>
-    );
-  }
-
-  return children;
-}
+import { LiffGuestProvider } from "../contexts/LiffGuestProvider"; // ✅ Add LIFF Guest Provider
 
 export default function ClientLayout({ children }) {
   return (
     <ReactQueryProvider>
       <SessionWrapper>
         <SessionProvider>
-          <UserSessionProvider>
-            {/* <LiffWrapper> */}
-            <ModalProvider>
-              <CarParamsProvider>
-                <RootLayoutClient>{children}</RootLayoutClient>
-              </CarParamsProvider>
-            </ModalProvider>
-            {/* </LiffWrapper> */}
-          </UserSessionProvider>
+          <LiffGuestProvider>
+            {/* ✅ Wrap with LIFF Guest Provider */}
+            <UserSessionProvider>
+              <ModalProvider>
+                <CarParamsProvider>
+                  <RootLayoutClient>{children}</RootLayoutClient>
+                </CarParamsProvider>
+              </ModalProvider>
+            </UserSessionProvider>
+          </LiffGuestProvider>
         </SessionProvider>
       </SessionWrapper>
     </ReactQueryProvider>
