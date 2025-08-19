@@ -1,17 +1,18 @@
 "use client";
 
 import LoginForm from "@/app/components/LoginForm";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, Suspense } from "react";
 import Image from "next/image";
 import { useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-export default function InternalLoginPage() {
+// ✅ Create a separate component for the search params logic
+function InternalLoginContent() {
   const [errorType, setErrorType] = useState(null);
   const [lineUserId, setLineUserId] = useState(null);
   const { data: session, status } = useSession();
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const searchParams = useSearchParams(); // ✅ Now properly wrapped in Suspense
 
   // Handle authenticated user redirects
   useEffect(() => {
@@ -79,7 +80,7 @@ export default function InternalLoginPage() {
     );
   }
 
-  // ✅ Internal Login Page (Unchanged Structure)
+  // ✅ Internal Login Page
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="max-w-md w-full space-y-8">
@@ -137,5 +138,26 @@ export default function InternalLoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// ✅ Loading component for Suspense fallback
+function InternalLoginLoading() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen w-full">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-white mx-auto mb-4"></div>
+        <p className="text-white text-lg">กำลังโหลด...</p>
+      </div>
+    </div>
+  );
+}
+
+// ✅ Main component with Suspense wrapper
+export default function InternalLoginPage() {
+  return (
+    <Suspense fallback={<InternalLoginLoading />}>
+      <InternalLoginContent />
+    </Suspense>
   );
 }

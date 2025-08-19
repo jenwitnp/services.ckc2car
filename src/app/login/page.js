@@ -2,19 +2,20 @@
 
 import LineLoginBtn from "@/app/components/line/LineLoginBtn";
 import LoginForm from "@/app/components/LoginForm";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, Suspense } from "react";
 import Image from "next/image";
 import { useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLiffGuest } from "@/app/contexts/LiffGuestProvider";
 
-export default function LoginPage() {
+// ✅ Create a separate component for the search params logic
+function LoginContent() {
   const [errorType, setErrorType] = useState(null);
   const [lineUserId, setLineUserId] = useState(null);
   const { data: session, status } = useSession();
   const { isLiffApp, isLoading, error } = useLiffGuest();
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const searchParams = useSearchParams(); // ✅ Now properly wrapped in Suspense
 
   // ✅ Handle authenticated user redirects
   useEffect(() => {
@@ -196,5 +197,26 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// ✅ Loading component for Suspense fallback
+function LoginLoading() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen w-full">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-white mx-auto mb-4"></div>
+        <p className="text-white text-lg">กำลังโหลด...</p>
+      </div>
+    </div>
+  );
+}
+
+// ✅ Main component with Suspense wrapper
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginLoading />}>
+      <LoginContent />
+    </Suspense>
   );
 }
