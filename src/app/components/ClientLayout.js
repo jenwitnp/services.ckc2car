@@ -33,13 +33,13 @@ export default function ClientLayout({ children }) {
       <SessionWrapper>
         <SessionProvider>
           <UserSessionProvider>
-            <LiffWrapper>
-              <ModalProvider>
-                <CarParamsProvider>
-                  <RootLayoutClient>{children}</RootLayoutClient>
-                </CarParamsProvider>
-              </ModalProvider>
-            </LiffWrapper>
+            {/* <LiffWrapper> */}
+            <ModalProvider>
+              <CarParamsProvider>
+                <RootLayoutClient>{children}</RootLayoutClient>
+              </CarParamsProvider>
+            </ModalProvider>
+            {/* </LiffWrapper> */}
           </UserSessionProvider>
         </SessionProvider>
       </SessionWrapper>
