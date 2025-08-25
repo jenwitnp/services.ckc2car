@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { signIn, useSession } from "next-auth/react";
-import { useForm } from "react-hook-form"; // ✅ Import React Hook Form
+import { useForm } from "react-hook-form";
 import { useLiffGuest } from "@/app/contexts/LiffGuestProvider";
 import {
   Card,
@@ -14,12 +14,11 @@ import {
 } from "@/app/components/ui/Card";
 import Button from "@/app/components/ui/Button";
 import Input from "@/app/components/ui/Input";
-import InputRow from "@/app/components/ui/InputRow"; // ✅ Use your existing InputRow
+import InputRow from "@/app/components/ui/InputRow";
 import Alert from "@/app/components/ui/Alert";
 import { Icons } from "@/app/components/ui/Icons";
 import LineConnectButton from "@/components/line/LineConnectButton";
 
-// ✅ Import icons directly from lucide-react
 import {
   User,
   Lock,
@@ -85,7 +84,8 @@ const LOGIN_PROVIDERS = {
   },
 };
 
-export default function LoginPage() {
+// ✅ Separate component that uses useSearchParams
+function LoginPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { data: session, status } = useSession();
@@ -108,7 +108,7 @@ export default function LoginPage() {
       username: "",
       password: "",
     },
-    mode: "onBlur", // Validate on blur for better UX
+    mode: "onBlur",
   });
 
   // Check for LINE account not linked error
@@ -143,7 +143,7 @@ export default function LoginPage() {
   const handleProviderLogin = async (providerId) => {
     setLoadingProvider(providerId);
     setError("");
-    clearErrors(); // Clear form errors when switching to social login
+    clearErrors();
 
     try {
       const result = await signIn(providerId, {
@@ -181,8 +181,7 @@ export default function LoginPage() {
 
       console.log("[login page] result : ", result);
 
-      if (result?.error && providerId === "line") {
-        // ✅ Set form-level error for invalid credentials
+      if (result?.error) {
         if (result.error === "CredentialsSignin") {
           setFormError("username", {
             type: "manual",
@@ -196,7 +195,6 @@ export default function LoginPage() {
           setError("เกิดข้อผิดพลาดในการเข้าสู่ระบบ กรุณาลองใหม่อีกครั้ง");
         }
       } else if (result?.ok) {
-        // ✅ Clear form on success
         reset();
         setTimeout(() => {
           router.push(redirectUrl || "/dashboard");
@@ -210,14 +208,14 @@ export default function LoginPage() {
     }
   };
 
-  // ✅ Get available providers (can filter based on environment/config)
+  // ✅ Get available providers
   const getAvailableProviders = () => {
     return Object.values(LOGIN_PROVIDERS).filter((provider) => {
       return ["credentials", "line"].includes(provider.id);
     });
   };
 
-  // ✅ Get alternative providers (excluding the current view)
+  // ✅ Get alternative providers
   const getAlternativeProviders = () => {
     const availableProviders = getAvailableProviders();
 
@@ -469,7 +467,6 @@ export default function LoginPage() {
               <Button
                 onClick={() => {
                   setShowCredentialsForm(true);
-                  // ✅ Clear form errors when switching views
                   clearErrors();
                   reset();
                 }}
@@ -488,7 +485,6 @@ export default function LoginPage() {
               <button
                 onClick={() => {
                   setShowCredentialsForm(false);
-                  // ✅ Clear form errors when switching views
                   clearErrors();
                   reset();
                 }}
@@ -514,5 +510,32 @@ export default function LoginPage() {
         </div>
       </Card>
     </div>
+  );
+}
+
+// ✅ Loading Fallback Component
+function LoginPageLoading() {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-main-100 via-main-50 to-main-200 flex items-center justify-center p-4">
+      <Card className="w-full max-w-md">
+        <CardContent className="p-8">
+          <div className="flex items-center justify-center">
+            <Loader2 className="h-8 w-8 text-primary-500 animate-spin" />
+            <span className="ml-3 text-main-600">
+              กำลังโหลดหน้าเข้าสู่ระบบ...
+            </span>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ✅ Main component with Suspense boundary
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginPageLoading />}>
+      <LoginPageContent />
+    </Suspense>
   );
 }
