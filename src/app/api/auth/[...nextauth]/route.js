@@ -27,6 +27,14 @@ async function getUserByLineId(lineUserId) {
 }
 
 async function linkLineAccount(userId, lineUserId) {
+  if (!lineUserId || lineUserId === "null" || lineUserId.trim() === "") {
+    console.log(
+      "Skipping LINE account linking - invalid LINE User ID:",
+      lineUserId
+    );
+    return false;
+  }
+
   console.log("linkLineAccount : ", lineUserId);
   try {
     const response = await fetch(
@@ -55,6 +63,18 @@ async function linkLineAccount(userId, lineUserId) {
 
 const handler = NextAuth({
   secret: process.env.NEXTAUTH_SECRET,
+
+  // ✅ Add JWT strategy
+  session: {
+    strategy: "jwt",
+    maxAge: 24 * 60 * 60, // 24 hours
+  },
+
+  // ✅ Add JWT configuration
+  jwt: {
+    maxAge: 24 * 60 * 60, // 24 hours
+  },
+
   providers: [
     FacebookProvider({
       clientId: process.env.FACEBOOK_CLIENT_ID,
@@ -106,11 +126,20 @@ const handler = NextAuth({
               position: result.user.position ?? "",
               image: result.user.image ?? "",
               accessToken: result.token,
+              role: result.user.role,
             };
 
-            // Add the LINE ID to link if it was provided
-            if (credentials.lineUserIdToLink) {
+            // ✅ Only add LINE ID if it's not null/empty
+            if (
+              credentials.lineUserIdToLink &&
+              credentials.lineUserIdToLink !== "null" &&
+              credentials.lineUserIdToLink.trim() !== ""
+            ) {
               user.lineUserIdToLink = credentials.lineUserIdToLink;
+              console.log(
+                "Adding LINE ID to link:",
+                credentials.lineUserIdToLink
+              );
             }
 
             return user;
@@ -129,128 +158,133 @@ const handler = NextAuth({
         try {
           const existingUser = await getUserByLineId(profile.sub);
           console.log(
-            "check existing user from callback : ",
+            "check existing user from callback:",
             profile.sub,
             existingUser
           );
 
           if (existingUser) {
-            // Linked account found, allow sign in
             return true;
           } else {
-            // No linked account found - redirect to login page with special parameter
             return `/login?error=LineAccountNotLinked&lineUserId=${profile.sub}`;
           }
         } catch (error) {
           console.error("Error in LINE sign-in flow:", error);
-          // Still redirect to login in case of error
           return `/login?error=LineAccountNotLinked&lineUserId=${profile.sub}`;
         }
       }
-
-      return true; // Allow other providers
+      return true;
     },
 
     async jwt({ token, account, profile, user, trigger, session }) {
-      // 1. Handle credential logins or if user object is passed on first login
+      console.log("JWT Callback - Input:", { user, account, profile, trigger });
+
+      // ✅ Handle user login (credentials or line)
       if (user) {
         token.user = {
           id: user.id,
           name: user.name,
           position: user.position,
           image: user.image,
+          role: user.role, // ✅ Ensure role is included
         };
+
         if (user.accessToken) {
           token.accessToken = user.accessToken;
         }
 
-        if (user.lineUserIdToLink) {
+        // ✅ Handle LINE ID linking for credentials login
+        if (user.lineUserIdToLink && user.lineUserIdToLink !== "null") {
           token.lineUserIdToLink = user.lineUserIdToLink;
         }
       }
 
-      console.log("jwt user data : ", user);
-      console.log("jwt user account data : ", account);
-      console.log("jwt trigger :", trigger);
-
-      // CASE A: Direct LINE login (with existing link)
+      // ✅ Handle LINE provider login
       if (account?.provider === "line" && profile) {
-        console.log("line login logic : ");
-        // If user already has a session, link the accounts
-        if (token.user?.id) {
-          console.log("Attempting to link LINE account directly...");
-          await linkLineAccount(token.user.id, profile.sub);
-        }
-        // Otherwise, try to find user with this LINE ID
-        else {
-          const existingUser = await getUserByLineId(profile.sub);
-          if (existingUser) {
-            token.user = {
-              id: existingUser.id,
-              name: existingUser.name,
-              position: existingUser.position,
-              image: existingUser.image,
-            };
-          }
+        console.log("Processing LINE login for:", profile.sub);
+
+        // Try to find existing user by LINE ID
+        const existingUser = await getUserByLineId(profile.sub);
+        if (existingUser) {
+          token.user = {
+            id: existingUser.id,
+            name: existingUser.name,
+            position: existingUser.position,
+            image: existingUser.image,
+            role: existingUser.role, // ✅ Include role from existing user
+          };
+          token.provider = "line";
         }
       }
 
-      // CASE B: User logged in with credentials and has a pending LINE ID to link
-      // This handles the case when they were redirected from LINE login to credential login
-      if (account?.provider === "credentials" && user) {
-        // Check URL for lineUserId parameter
-        console.log("credential logic");
+      // ✅ Handle credentials login with LINE linking
+      if (account?.provider === "credentials" && token.lineUserIdToLink) {
+        if (token.lineUserIdToLink !== "null" && token.user?.id) {
+          console.log(
+            "Linking LINE account:",
+            token.user.id,
+            "->",
+            token.lineUserIdToLink
+          );
 
-        try {
-          const lineUserIdToLink =
-            token.lineUserIdToLink || user.lineUserIdToLink;
-
-          if (lineUserIdToLink) {
-            console.log(
-              "Found LINE ID to link after credential login:",
-              lineUserIdToLink
+          try {
+            const linkSuccess = await linkLineAccount(
+              token.user.id,
+              token.lineUserIdToLink
             );
-            await linkLineAccount(user.id, lineUserIdToLink);
-
-            // Store successful linking in token for notification
-            token.linkedLineAccount = true;
-            // Remove the temporary property to keep the token clean
-            delete token.lineUserIdToLink;
+            if (linkSuccess) {
+              token.linkedLineAccount = true;
+              console.log("LINE account linked successfully");
+            }
+          } catch (error) {
+            console.error("Failed to link LINE account:", error);
           }
-        } catch (error) {
-          // URL parsing error, just continue
-          console.log("credential error", error);
+
+          // Clean up the temporary linking data
+          delete token.lineUserIdToLink;
         }
       }
 
-      // CASE C: Handle LINE linking via update session
+      // ✅ Handle session updates
       if (trigger === "update" && session?.lineUserIdToLink) {
         console.log("Linking LINE account via session update");
-        await linkLineAccount(token.user.id, session.lineUserIdToLink);
-        token.linkedLineAccount = true;
+        if (token.user?.id) {
+          await linkLineAccount(token.user.id, session.lineUserIdToLink);
+          token.linkedLineAccount = true;
+        }
       }
 
+      console.log("JWT Callback - Output token.user:", token.user);
       return token;
     },
 
     async session({ session, token }) {
+      console.log("Session Callback - Input token:", token);
+
       if (token.user) {
-        session.user = token.user;
-      }
-      if (typeof token.accessToken === "string") {
-        session.accessToken = token.accessToken;
-        session.provider =
-          typeof token.provider === "string" ? token.provider : undefined;
+        session.user = {
+          ...token.user,
+          role: token.user.role, // ✅ Explicitly include role
+        };
       }
 
-      // Pass along the LINE linking status to the client
+      if (token.accessToken) {
+        session.accessToken = token.accessToken;
+      }
+
+      if (token.provider) {
+        session.provider = token.provider;
+      }
+
       if (token.linkedLineAccount) {
         session.linkedLineAccount = true;
       }
 
+      console.log("Session Callback - Output session:", session);
       return session;
     },
   },
+
   pages: {
     signIn: "/login",
   },

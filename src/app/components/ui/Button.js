@@ -1,128 +1,110 @@
-import clsx from "clsx";
-import React from "react";
+"use client";
 
-const buttonColors = {
-  save: {
-    bg: "bg-main-600",
-    hover: "hover:bg-main-600",
-    disabled: "disabled:bg-main-600",
-    text: "text-white",
-    textDisabled: "disabled:text-main-700",
-    border: "border-main-600",
+import { forwardRef } from "react";
+import { cn } from "@/app/utils/cn";
+import { Loader2 } from "lucide-react";
+
+const buttonVariants = {
+  variant: {
+    default: "bg-primary-500 hover:bg-primary-600 text-white shadow-md",
+    destructive: "bg-danger-500 hover:bg-danger-600 text-white shadow-md",
+    outline: "border border-main-300 bg-white hover:bg-main-50 text-main-900",
+    secondary: "bg-main-200 hover:bg-main-300 text-main-900",
+    ghost: "hover:bg-main-100 text-main-900",
+    link: "text-primary-500 underline-offset-4 hover:underline",
+    success: "bg-success-500 hover:bg-success-600 text-white shadow-md",
+    warning: "bg-warning-500 hover:bg-warning-600 text-white shadow-md",
+    line: "bg-social-line-500 hover:bg-social-line-600 text-white shadow-md",
   },
-  delete: {
-    bg: "bg-main-800",
-    hover: "hover:bg-main-900",
-    disabled: "disabled:bg-main-600",
-    text: "text-white",
-    textDisabled: "disabled:text-main-700",
-    border: "border-main-800",
+  size: {
+    default: "h-10 px-4 py-2",
+    sm: "h-8 px-3 text-sm",
+    lg: "h-12 px-8 text-lg",
+    xl: "h-14 px-10 text-xl",
+    icon: "h-10 w-10",
   },
-  edit: {
-    bg: "bg-main-400",
-    hover: "hover:bg-main-500",
-    disabled: "disabled:bg-main-600",
-    text: "text-white",
-    textDisabled: "disabled:text-main-700",
-    border: "border-main-400",
-  },
-  pending: {
-    bg: "bg-main-300",
-    hover: "hover:bg-main-400",
-    disabled: "disabled:bg-main-600",
-    text: "text-black",
-    textDisabled: "disabled:text-main-700",
-    border: "border-main-300",
-  },
-  warning: {
-    bg: "bg-main-700",
-    hover: "hover:bg-main-800",
-    disabled: "disabled:bg-main-600",
-    text: "text-white",
-    textDisabled: "disabled:text-main-700",
-    border: "border-main-700",
-  },
-  alert: {
-    bg: "bg-main-900",
-    hover: "hover:bg-main-800",
-    disabled: "disabled:bg-main-600",
-    text: "text-white",
-    textDisabled: "disabled:text-main-700",
-    border: "border-main-900",
-  },
-  attention: {
-    bg: "bg-main-600",
-    hover: "hover:bg-main-700",
-    disabled: "disabled:bg-main-600",
-    text: "text-white",
-    textDisabled: "disabled:text-main-700",
-    border: "border-main-600",
-  },
-  submit: {
-    bg: "bg-main-600",
-    hover: "hover:bg-main-700",
-    disabled: "disabled:bg-main-700",
-    text: "text-main-300",
-    textDisabled: "disabled:text-main-800",
-    border: "border-transparent",
-  },
-  cancel: {
-    bg: "bg-main-800 shadow-sm",
-    hover: "hover:bg-main-100",
-    disabled: "disabled:bg-main-600",
-    text: "text-main-500",
-    textDisabled: "disabled:text-main-700",
-    border: "border-main-500 ",
-  },
-  primary: {
-    bg: "bg-primary-600",
-    hover: "hover:bg-primary-700",
-    disabled: "disabled:bg-primary-400",
-    text: "text-white",
-    textDisabled: "disabled:text-primary-100",
-    border: "border-primary-600",
+  fullWidth: {
+    true: "w-full",
+    false: "",
   },
 };
 
-const sizeStyles = {
-  sm: "text-sm px-3 py-2",
-  md: "text-md px-4 py-3",
-  lg: "text-lg px-6 py-3",
-  xl: "text-xl px-8 py-4",
-};
+const Button = forwardRef(
+  (
+    {
+      className,
+      variant = "default",
+      size = "default",
+      fullWidth = false,
+      loading = false,
+      disabled = false,
+      children,
+      icon: Icon,
+      iconPosition = "left",
+      ...props
+    },
+    ref
+  ) => {
+    const isDisabled = disabled || loading;
 
-const Button = ({
-  variant = "primary",
-  size = "md",
-  fit = false,
-  disabled = false,
-  textAlign = "center",
-  children,
-  ...props
-}) => {
-  const colors = buttonColors[variant] || buttonColors.save;
+    return (
+      <button
+        className={cn(
+          // Base styles
+          "inline-flex items-center justify-center rounded-lg font-medium transition-all duration-200",
+          "focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2",
+          "disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none",
 
-  return (
-    <button
-      className={clsx(
-        "flex items-center justify-center gap-2 rounded-md transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-main-500 focus:ring-offset-1 font-medium",
-        sizeStyles[size] || sizeStyles.md,
-        fit && "flex-1 w-full",
-        textAlign && `justify-${textAlign}`,
-        disabled && "cursor-not-allowed bg-blue-400 text-blue-100",
-        colors.bg,
-        colors.hover,
-        colors.text,
-        colors.disabled,
-        colors.textDisabled,
-        colors.border && `border ${colors.border}`
-      )}
-      disabled={disabled}
-      {...props}
-    >
-      {children}
-    </button>
-  );
-};
+          // Variants
+          buttonVariants.variant[variant],
+          buttonVariants.size[size],
+          buttonVariants.fullWidth[fullWidth],
+
+          // Loading state
+          loading && "relative text-transparent",
+
+          className
+        )}
+        disabled={isDisabled}
+        ref={ref}
+        {...props}
+      >
+        {/* Loading spinner */}
+        {loading && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Loader2 className="h-4 w-4 animate-spin" />
+          </div>
+        )}
+
+        {/* Icon left */}
+        {Icon && iconPosition === "left" && !loading && (
+          <Icon
+            className={cn(
+              "flex-shrink-0",
+              children ? "mr-2" : "",
+              size === "sm" ? "h-4 w-4" : "h-5 w-5"
+            )}
+          />
+        )}
+
+        {/* Content */}
+        {children}
+
+        {/* Icon right */}
+        {Icon && iconPosition === "right" && !loading && (
+          <Icon
+            className={cn(
+              "flex-shrink-0",
+              children ? "ml-2" : "",
+              size === "sm" ? "h-4 w-4" : "h-5 w-5"
+            )}
+          />
+        )}
+      </button>
+    );
+  }
+);
+
+Button.displayName = "Button";
 
 export default Button;

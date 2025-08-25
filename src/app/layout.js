@@ -14,12 +14,6 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="th">
-      <head>
-        <script
-          src="https://static.line-scdn.net/liff/edge/2/sdk.js"
-          async
-        ></script>
-      </head>
       <body className="flex  bg-main-900 mx-auto h-screen overflow-auto">
         <ClientLayout>{children}</ClientLayout>
       </body>

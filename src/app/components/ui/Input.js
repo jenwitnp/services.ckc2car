@@ -1,56 +1,140 @@
 "use client";
-import clsx from "clsx";
-import React, { forwardRef } from "react";
+
+import { forwardRef, useState } from "react";
+import { cn } from "@/app/utils/cn";
+import { Eye, EyeOff } from "lucide-react";
 
 const Input = forwardRef(
   (
     {
-      size = "sm",
-      fit = false,
-      disabled = false,
-      textAlign = "left",
-      icon,
+      className,
+      type = "text",
+      label,
       error,
-      isError,
-      readOnly = false,
+      helperText,
+      required = false,
+      disabled = false,
+      icon: Icon,
+      iconPosition = "left",
+      showPasswordToggle = false,
       ...props
     },
     ref
   ) => {
-    const showError = error || isError;
-    const sizeClasses = {
-      sm: "h-8",
-      md: "h-10",
-      lg: "h-12",
-      xl: "h-14",
-    };
+    const [showPassword, setShowPassword] = useState(false);
+    const [isFocused, setIsFocused] = useState(false);
+
+    const inputType = type === "password" && showPassword ? "text" : type;
+    const hasError = !!error;
 
     return (
-      <div className={clsx(fit && "flex-1")}>
-        <div className="relative flex items-center">
-          {icon && (
-            <span className="absolute left-3 text-main-400">{icon}</span>
-          )}
-          <input
-            ref={ref}
-            disabled={disabled}
-            readOnly={readOnly}
-            {...props}
-            className={clsx(
-              `border bg-main-800 py-2 pr-4 text-sm text-main-400 placeholder:text-sm placeholder:text-main-600 ${
-                sizeClasses[size]
-              } ${
-                showError ? "border-danger-500" : "border-main-500"
-              } w-full rounded-lg focus:border-main-700 focus:outline-none focus:ring-1 focus:ring-main-300`,
-              icon ? "pl-10" : "pl-4",
-              disabled && "cursor-not-allowed bg-gray-200 opacity-50",
-              textAlign === "center" && "text-center",
-              textAlign === "right" && "text-right"
+      <div className="w-full">
+        {/* Label (if provided directly) */}
+        {label && (
+          <label
+            className={cn(
+              "block text-sm font-medium transition-colors mb-1",
+              hasError ? "text-danger-600" : "text-main-700",
+              disabled && "text-main-400"
             )}
+          >
+            {label}
+            {required && <span className="text-danger-500 ml-1">*</span>}
+          </label>
+        )}
+
+        {/* Input Container */}
+        <div className="relative">
+          {/* Left Icon */}
+          {Icon && iconPosition === "left" && (
+            <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
+              <Icon
+                className={cn(
+                  "h-5 w-5 transition-colors",
+                  hasError
+                    ? "text-danger-400"
+                    : isFocused
+                    ? "text-secondary-500"
+                    : "text-main-400"
+                )}
+              />
+            </div>
+          )}
+
+          {/* Input Field */}
+          <input
+            type={inputType}
+            className={cn(
+              // Base styles
+              "w-full rounded-lg border transition-all duration-200",
+              "placeholder:text-main-400 focus:outline-none focus:ring-2 focus:ring-offset-0",
+
+              // Padding with/without icons
+              Icon && iconPosition === "left" ? "pl-10 pr-4" : "px-4",
+              type === "password" && showPasswordToggle ? "pr-12" : "",
+              Icon && iconPosition === "right" ? "pr-10" : "",
+
+              // Size
+              "h-11 text-sm",
+
+              // States
+              hasError
+                ? "border-danger-300 focus:border-danger-500 focus:ring-danger-500"
+                : "border-main-600 focus:border-secondary-500 focus:ring-secondary-500",
+
+              disabled && "bg-gray-50 text-main-400 cursor-not-allowed",
+
+              className
+            )}
+            disabled={disabled}
+            ref={ref}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            {...props}
           />
+
+          {/* Password Toggle */}
+          {type === "password" && showPasswordToggle && (
+            <button
+              type="button"
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-main-400 hover:text-main-600 transition-colors"
+              onClick={() => setShowPassword(!showPassword)}
+            >
+              {showPassword ? (
+                <EyeOff className="h-5 w-5" />
+              ) : (
+                <Eye className="h-5 w-5" />
+              )}
+            </button>
+          )}
+
+          {/* Right Icon */}
+          {Icon && iconPosition === "right" && (
+            <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+              <Icon
+                className={cn(
+                  "h-5 w-5 transition-colors",
+                  hasError
+                    ? "text-danger-400"
+                    : isFocused
+                    ? "text-secondary-500"
+                    : "text-main-400"
+                )}
+              />
+            </div>
+          )}
         </div>
-        {typeof showError === "string" && (
-          <small className="text-xs text-danger-500">{showError}</small>
+
+        {/* Helper Text / Error - Only show if not using InputRow */}
+        {!label && (error || helperText) && (
+          <p
+            className={cn(
+              "text-sm mt-1",
+              hasError ? "text-danger-600" : "text-main-500"
+            )}
+          >
+            {error || helperText}
+          </p>
         )}
       </div>
     );
@@ -58,4 +142,5 @@ const Input = forwardRef(
 );
 
 Input.displayName = "Input";
+
 export default Input;

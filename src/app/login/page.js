@@ -1,309 +1,518 @@
 "use client";
 
-import LineLoginBtn from "@/app/components/line/LineLoginBtn";
-import LoginForm from "@/app/components/LoginForm";
-import React, { useEffect, useState, Suspense } from "react";
-import Image from "next/image";
-import { useSession } from "next-auth/react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { signIn, useSession } from "next-auth/react";
+import { useForm } from "react-hook-form"; // ✅ Import React Hook Form
 import { useLiffGuest } from "@/app/contexts/LiffGuestProvider";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/app/components/ui/Card";
+import Button from "@/app/components/ui/Button";
+import Input from "@/app/components/ui/Input";
+import InputRow from "@/app/components/ui/InputRow"; // ✅ Use your existing InputRow
+import Alert from "@/app/components/ui/Alert";
+import { Icons } from "@/app/components/ui/Icons";
+import LineConnectButton from "@/components/line/LineConnectButton";
 
-// ✅ LIFF Loading Component for Login Page
-function LiffLoginLoading({ status, message }) {
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen w-full">
-      <div className="text-center max-w-md mx-auto">
-        {/* ✅ Dynamic loading animation based on status */}
-        <div className="mb-8">
-          {status === "authenticated" ? (
-            <div className="w-20 h-20 bg-green-500 rounded-full mx-auto mb-4 flex items-center justify-center animate-pulse">
-              <span className="text-white text-3xl">✓</span>
-            </div>
-          ) : status === "error" ? (
-            <div className="w-20 h-20 bg-yellow-500 rounded-full mx-auto mb-4 flex items-center justify-center animate-bounce">
-              <span className="text-white text-2xl">⚠️</span>
-            </div>
-          ) : (
-            <div className="relative">
-              <div className="w-20 h-20 bg-white rounded-full mx-auto mb-4 flex items-center justify-center">
-                <span className="text-3xl">📱</span>
-              </div>
-              <div className="absolute inset-0 w-20 h-20 mx-auto border-4 border-transparent border-t-green-400 border-r-blue-400 rounded-full animate-spin"></div>
-            </div>
-          )}
-        </div>
+// ✅ Import icons directly from lucide-react
+import {
+  User,
+  Lock,
+  AlertCircle,
+  XCircle,
+  Loader2,
+  Facebook,
+  Apple,
+} from "lucide-react";
 
-        {/* ✅ Status message */}
-        <h2 className="text-xl font-bold text-white mb-4">
-          {status === "authenticated"
-            ? "เข้าสู่ระบบสำเร็จ!"
-            : "กำลังเข้าสู่ระบบ LINE"}
-        </h2>
+// ✅ Login Provider Configuration - Updated with main color tone
+const LOGIN_PROVIDERS = {
+  credentials: {
+    id: "credentials",
+    name: "ชื่อผู้ใช้/รหัสผ่าน",
+    description: "เข้าสู่ระบบด้วยชื่อผู้ใช้และรหัสผ่าน",
+    icon: User,
+    color: "bg-primary-500 hover:bg-primary-600",
+    textColor: "text-primary-600",
+    bgColor: "bg-primary-50",
+    borderColor: "border-primary-200",
+    primary: true,
+  },
+  line: {
+    id: "line",
+    name: "LINE",
+    description: "เข้าสู่ระบบด้วยบัญชี LINE",
+    icon: Icons.Line,
+    color: "bg-social-line-500 hover:bg-social-line-600",
+    textColor: "text-social-line-600",
+    bgColor: "bg-social-line-50",
+    borderColor: "border-social-line-200",
+  },
+  google: {
+    id: "google",
+    name: "Google",
+    description: "เข้าสู่ระบบด้วยบัญชี Google",
+    icon: Icons.Google,
+    color: "bg-social-google-500 hover:bg-social-google-600",
+    textColor: "text-social-google-600",
+    bgColor: "bg-social-google-50",
+    borderColor: "border-social-google-200",
+  },
+  facebook: {
+    id: "facebook",
+    name: "Facebook",
+    description: "เข้าสู่ระบบด้วยบัญชี Facebook",
+    icon: Facebook,
+    color: "bg-social-facebook-500 hover:bg-social-facebook-600",
+    textColor: "text-social-facebook-600",
+    bgColor: "bg-social-facebook-50",
+    borderColor: "border-social-facebook-200",
+  },
+  apple: {
+    id: "apple",
+    name: "Apple",
+    description: "เข้าสู่ระบบด้วย Apple ID",
+    icon: Apple,
+    color: "bg-social-apple-800 hover:bg-social-apple-900",
+    textColor: "text-social-apple-800",
+    bgColor: "bg-social-apple-50",
+    borderColor: "border-social-apple-200",
+  },
+};
 
-        <p
-          className={`text-lg ${
-            status === "authenticated"
-              ? "text-green-300"
-              : status === "error"
-              ? "text-yellow-300"
-              : "text-blue-300"
-          } animate-pulse`}
-        >
-          {message}
-        </p>
-
-        {/* ✅ Progress indicator */}
-        {status !== "authenticated" && status !== "error" && (
-          <div className="mt-6">
-            <div className="w-full bg-gray-700 rounded-full h-2 overflow-hidden">
-              <div className="bg-gradient-to-r from-green-500 to-blue-500 h-2 rounded-full animate-pulse w-3/4"></div>
-            </div>
-          </div>
-        )}
-
-        {/* ✅ Additional info */}
-        <div className="mt-8 bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-white/20">
-          <p className="text-green-200 text-sm">
-            🔐 การเชื่อมต่อปลอดภัยผ่าน LINE LIFF
-          </p>
-          {status === "redirecting" && (
-            <p className="text-blue-200 text-xs mt-1">
-              กำลังนำทางไปยังหน้าที่คุณต้องการ...
-            </p>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ✅ Create a separate component for the search params logic
-function LoginContent() {
-  const [errorType, setErrorType] = useState(null);
-  const [lineUserId, setLineUserId] = useState(null);
-  const { data: session, status } = useSession();
-  const { isLiffApp, isLoading, loadingStatus, error, getLoadingMessage } =
-    useLiffGuest();
-  const router = useRouter();
+export default function LoginPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const { data: session, status } = useSession();
+  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadingProvider, setLoadingProvider] = useState(null);
+  const [showCredentialsForm, setShowCredentialsForm] = useState(true);
+  const { isInLineApp, getLineUserId } = useLiffGuest();
 
-  // ✅ Handle authenticated user redirects
+  // ✅ React Hook Form setup
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+    reset,
+    setError: setFormError,
+    clearErrors,
+  } = useForm({
+    defaultValues: {
+      username: "",
+      password: "",
+    },
+    mode: "onBlur", // Validate on blur for better UX
+  });
+
+  // Check for LINE account not linked error
+  const authError = searchParams.get("error");
+  const lineUserId = searchParams.get("lineUserId");
+  const redirectUrl = searchParams.get("redirect");
+
   useEffect(() => {
-    if (status === "loading") return;
+    if (authError === "LineAccountNotLinked" && lineUserId) {
+      setError(
+        "บัญชี LINE ของคุณยังไม่ได้เชื่อมต่อกับระบบ กรุณาเข้าสู่ระบบด้วยชื่อผู้ใช้และรหัสผ่านเพื่อเชื่อมต่อบัญชี LINE"
+      );
+      setShowCredentialsForm(true);
+    }
+  }, [authError, lineUserId]);
 
-    if (session?.user) {
-      const userType = session.user.userType;
-      const returnUrl = searchParams.get("returnUrl");
+  // ✅ Auto-show LINE login for LINE app users
+  useEffect(() => {
+    if (isInLineApp() && !authError) {
+      setShowCredentialsForm(false);
+    }
+  }, [isInLineApp, authError]);
 
-      if (userType === "internal") {
-        console.log(
-          "[Login] Internal user authenticated, redirecting to dashboard"
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (status === "authenticated" && !lineUserId) {
+      router.push(redirectUrl || "/dashboard");
+    }
+  }, [status, router, redirectUrl, lineUserId]);
+
+  // ✅ Generic provider login handler
+  const handleProviderLogin = async (providerId) => {
+    setLoadingProvider(providerId);
+    setError("");
+    clearErrors(); // Clear form errors when switching to social login
+
+    try {
+      const result = await signIn(providerId, {
+        redirect: false,
+        callbackUrl: redirectUrl || "/dashboard",
+      });
+
+      if (result?.error) {
+        setError(
+          `เกิดข้อผิดพลาดในการเข้าสู่ระบบ ${LOGIN_PROVIDERS[providerId]?.name} กรุณาลองใหม่อีกครั้ง`
         );
-        router.push("/dashboard");
-      } else {
-        const redirectUrl =
-          returnUrl && returnUrl !== "/login" ? returnUrl : "/cars";
-        console.log(
-          "[Login] Customer authenticated, redirecting to:",
-          redirectUrl
-        );
-        router.push(redirectUrl);
       }
+    } catch (error) {
+      console.error(`${providerId} login error:`, error);
+      setError(
+        `เกิดข้อผิดพลาดในการเข้าสู่ระบบ ${LOGIN_PROVIDERS[providerId]?.name} กรุณาลองใหม่อีกครั้ง`
+      );
+    } finally {
+      setLoadingProvider(null);
     }
-  }, [session, status, router, searchParams]);
+  };
 
-  // ✅ For LIFF users that somehow reach this page without redirect, redirect them
-  useEffect(() => {
-    if (isLiffApp && !isLoading && !session && !error) {
-      console.log("[Login] LIFF user on login page, redirecting to cars");
-      router.replace("/cars");
+  // ✅ Form submission handler with React Hook Form
+  const onSubmit = async (data) => {
+    setIsLoading(true);
+    setError("");
+
+    try {
+      const result = await signIn("credentials", {
+        username: data.username,
+        password: data.password,
+        lineUserIdToLink: lineUserId,
+        redirect: false,
+      });
+
+      console.log("[login page] result : ", result);
+
+      if (result?.error && providerId === "line") {
+        // ✅ Set form-level error for invalid credentials
+        if (result.error === "CredentialsSignin") {
+          setFormError("username", {
+            type: "manual",
+            message: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง",
+          });
+          setFormError("password", {
+            type: "manual",
+            message: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง",
+          });
+        } else {
+          setError("เกิดข้อผิดพลาดในการเข้าสู่ระบบ กรุณาลองใหม่อีกครั้ง");
+        }
+      } else if (result?.ok) {
+        // ✅ Clear form on success
+        reset();
+        setTimeout(() => {
+          router.push(redirectUrl || "/dashboard");
+        }, 500);
+      }
+    } catch (error) {
+      console.error("Login error:", error);
+      setError("เกิดข้อผิดพลาดในการเข้าสู่ระบบ กรุณาลองใหม่อีกครั้ง");
+    } finally {
+      setIsLoading(false);
     }
-  }, [isLiffApp, isLoading, session, error, router]);
+  };
 
-  // Check URL parameters for LINE account linking
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const error = params.get("error");
-      const lineId = params.get("lineUserId");
+  // ✅ Get available providers (can filter based on environment/config)
+  const getAvailableProviders = () => {
+    return Object.values(LOGIN_PROVIDERS).filter((provider) => {
+      return ["credentials", "line"].includes(provider.id);
+    });
+  };
 
-      setErrorType(error);
-      setLineUserId(lineId);
+  // ✅ Get alternative providers (excluding the current view)
+  const getAlternativeProviders = () => {
+    const availableProviders = getAvailableProviders();
+
+    if (showCredentialsForm) {
+      return availableProviders.filter((p) => p.id !== "credentials");
+    } else {
+      return availableProviders.filter((p) => p.id === "credentials");
     }
-  }, []);
+  };
 
-  const showCredentialsForm =
-    errorType === "LineAccountNotLinked" && lineUserId;
-
-  // ✅ Show LIFF loading with status for LIFF users
-  if (isLiffApp && isLoading) {
-    return (
-      <LiffLoginLoading status={loadingStatus} message={getLoadingMessage()} />
-    );
-  }
-
-  // ✅ Show regular loading for non-LIFF users
+  // Loading state
   if (status === "loading") {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen w-full">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-white mx-auto mb-4"></div>
-          <p className="text-white text-lg">กำลังตรวจสอบสถานะ...</p>
-        </div>
+      <div className="min-h-screen bg-gradient-to-br from-main-100 via-main-50 to-main-200 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardContent className="p-8">
+            <div className="flex items-center justify-center">
+              <Loader2 className="h-8 w-8 text-primary-500 animate-spin" />
+              <span className="ml-3 text-main-600">
+                กำลังตรวจสอบสถานะการเข้าสู่ระบบ...
+              </span>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
-  // ✅ For LIFF errors, show error and redirect
-  if (isLiffApp && error) {
-    setTimeout(() => {
-      router.replace("/cars");
-    }, 3000);
-
+  // If user is already logged in but needs to connect LINE
+  if (session && lineUserId) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen w-full">
-        <div className="text-center bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-6 m-4">
-          <div className="w-16 h-16 bg-yellow-500 rounded-full mx-auto mb-4 flex items-center justify-center">
-            <span className="text-white text-2xl">⚠️</span>
-          </div>
-          <p className="text-yellow-300 text-lg mb-2">
-            เกิดข้อผิดพลาดในการเชื่อมต่อ LINE
-          </p>
-          <p className="text-yellow-400 text-sm mb-4">
-            กำลังนำคุณไปยังเว็บไซต์...
-          </p>
-          <button
-            onClick={() => router.replace("/cars")}
-            className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
-          >
-            ดำเนินการต่อ
-          </button>
-        </div>
-      </div>
-    );
-  }
+      <div className="min-h-screen bg-gradient-to-br from-main-100 via-main-50 to-main-200 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-social-line-100 flex items-center justify-center">
+              <Icons.Line className="h-6 w-6 text-social-line-600" />
+            </div>
+            <CardTitle className="text-main-900">เชื่อมต่อบัญชี LINE</CardTitle>
+            <CardDescription className="text-main-600">
+              คุณได้เข้าสู่ระบบแล้ว ต้องการเชื่อมต่อบัญชี LINE ของคุณหรือไม่?
+            </CardDescription>
+          </CardHeader>
 
-  // Don't show login form if user is already authenticated
-  if (session?.user) {
-    router.replace("/ai-chat");
-    //   return (
-    //     <div className="flex flex-col items-center justify-center min-h-screen w-full">
-    //       <div className="text-center">
-    //         <div className="animate-pulse">
-    //           <div className="w-16 h-16 bg-green-500 rounded-full mx-auto mb-4 flex items-center justify-center">
-    //             <span className="text-white text-2xl">✓</span>
-    //           </div>
-    //         </div>
-    //         <p className="text-white text-lg">กำลังเปลี่ยนหน้า...</p>
-    //       </div>
-    //     </div>
-    //   );
-  }
-
-  // ✅ If LIFF user somehow reaches here, redirect immediately
-  if (isLiffApp) {
-    setTimeout(() => {
-      router.replace("/cars");
-    }, 500);
-
-    return (
-      <LiffLoginLoading
-        status="redirecting"
-        message="กำลังนำทางไปยังเว็บไซต์..."
-      />
-    );
-  }
-
-  // ✅ Regular Login Page for Non-LIFF Users Only
-  return (
-    <div className="min-h-screen flex items-center justify-center px-4">
-      <div className="max-w-md w-full space-y-8">
-        {/* Logo and Company Name */}
-        <div className="text-center">
-          <div className="mx-auto h-24 w-24 bg-white rounded-full flex items-center justify-center mb-4">
-            <Image
-              src="/logo-ckc.png"
-              alt="CKC Logo"
-              width={60}
-              height={60}
-              className="object-contain"
+          <CardContent className="space-y-4">
+            <LineConnectButton
+              onConnected={(lineId) => {
+                router.push("/dashboard");
+              }}
+              fullWidth
             />
-          </div>
-          <h1 className="text-3xl font-bold text-white mb-2">CKC SERVICES</h1>
-          <p className="text-green-300">ศูนย์บริการข้อมูลรถยนต์</p>
-        </div>
 
-        {/* Login Section */}
-        <div className="bg-white rounded-lg shadow-xl p-8">
-          <div className="text-center mb-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">
-              ยินดีต้อนรับ
-            </h2>
-            <p className="text-gray-600">
-              เข้าสู่ระบบเพื่อดูข้อมูลรถยนต์และติดต่อเจ้าหน้าที่
-            </p>
+            <Button
+              variant="outline"
+              fullWidth
+              onClick={() => router.push("/dashboard")}
+            >
+              ข้ามไปก่อน
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center p-4">
+      <Card className="w-full max-w-md shadow-xl">
+        <CardHeader className="text-center pb-4">
+          {/* Logo/Brand */}
+          <div className="mx-auto mb-4 h-16 w-16 rounded-full bg-primary-100 flex items-center justify-center">
+            <div className="h-10 w-10 rounded-full bg-primary-500 flex items-center justify-center">
+              <span className="text-white font-bold text-xl">C</span>
+            </div>
           </div>
 
-          {/* Conditional Login Form */}
-          {showCredentialsForm ? (
-            <>
-              <div className="mb-4 p-3 bg-blue-500/20 border border-blue-500/30 rounded text-blue-700 text-sm">
-                เพื่อเชื่อมต่อบัญชี LINE ของคุณ
-                กรุณาเข้าสู่ระบบด้วยบัญชีผู้ใช้และรหัสผ่านของคุณก่อน
-              </div>
-              <LoginForm lineUserIdToLink={lineUserId} />
-            </>
-          ) : (
+          <CardTitle className="text-2xl text-main-900">เข้าสู่ระบบ</CardTitle>
+          <CardDescription className="text-main-600">
+            CKC Car Services - ระบบจัดการรถยนต์
+          </CardDescription>
+        </CardHeader>
+
+        <CardContent className="space-y-6">
+          {/* Error Alert */}
+          {error && (
+            <Alert
+              variant="destructive"
+              icon={XCircle}
+              onClose={() => setError("")}
+            >
+              {error}
+            </Alert>
+          )}
+
+          {/* ✅ Credentials Form with React Hook Form (primary view) */}
+          {showCredentialsForm && (
             <div className="space-y-4">
-              <LineLoginBtn />
+              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                {/* ✅ Username Field with Validation */}
+                <InputRow label="ชื่อผู้ใช้" id="username" isError={errors}>
+                  <Input
+                    type="text"
+                    icon={User}
+                    placeholder="กรุณากรอกชื่อผู้ใช้"
+                    disabled={isLoading}
+                    {...register("username", {
+                      required: "กรุณากรอกชื่อผู้ใช้",
+                      minLength: {
+                        value: 3,
+                        message: "ชื่อผู้ใช้ต้องมีอย่างน้อย 3 ตัวอักษร",
+                      },
+                      pattern: {
+                        value: /^[a-zA-Z0-9_.-]+$/,
+                        message:
+                          "ชื่อผู้ใช้ใช้ได้เฉพาะตัวอักษร ตัวเลข และเครื่องหมาย _ . -",
+                      },
+                    })}
+                  />
+                </InputRow>
 
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-300" />
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-white text-gray-500">หรือ</span>
-                </div>
-              </div>
+                {/* ✅ Password Field with Validation */}
+                <InputRow label="รหัสผ่าน" id="password" isError={errors}>
+                  <Input
+                    type="password"
+                    icon={Lock}
+                    placeholder="กรุณากรอกรหัสผ่าน"
+                    showPasswordToggle
+                    disabled={isLoading}
+                    {...register("password", {
+                      required: "กรุณากรอกรหัสผ่าน",
+                      minLength: {
+                        value: 6,
+                        message: "รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร",
+                      },
+                    })}
+                  />
+                </InputRow>
 
-              <div className="text-center">
-                <a
-                  href="/login/internal"
-                  className="text-sm text-blue-600 hover:text-blue-500 font-medium"
+                <Button
+                  type="submit"
+                  fullWidth
+                  loading={isLoading}
+                  disabled={isSubmitting}
+                  className="mt-6"
                 >
-                  เข้าสู่ระบบสำหรับพนักงาน
-                </a>
-              </div>
+                  {isLoading ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
+                </Button>
+              </form>
+
+              {/* ✅ Alternative Login Methods */}
+              {getAlternativeProviders().length > 0 && (
+                <>
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-main-300" />
+                    </div>
+                    <div className="relative flex justify-center text-sm">
+                      <span className="px-3 bg-white text-main-500">หรือ</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    {getAlternativeProviders().map((provider) => {
+                      const isLoadingProvider = loadingProvider === provider.id;
+                      const Icon = provider.icon;
+
+                      return (
+                        <Button
+                          key={provider.id}
+                          onClick={() => handleProviderLogin(provider.id)}
+                          disabled={loadingProvider !== null || isLoading}
+                          fullWidth
+                          variant="outline"
+                          className={`
+                            ${provider.borderColor} ${provider.bgColor}
+                            hover:${provider.bgColor} ${provider.textColor}
+                          `}
+                          icon={Icon}
+                          loading={isLoadingProvider}
+                        >
+                          {isLoadingProvider
+                            ? `กำลังเข้าสู่ระบบ ${provider.name}...`
+                            : `เข้าสู่ระบบด้วย ${provider.name}`}
+                        </Button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Special note for LINE in browser */}
+                  {!isInLineApp() &&
+                    getAlternativeProviders().some((p) => p.id === "line") && (
+                      <div className="mt-3 p-3 bg-social-line-50 border border-social-line-200 rounded-lg">
+                        <p className="text-xs text-social-line-700 flex items-center">
+                          <AlertCircle className="h-3 w-3 mr-1 flex-shrink-0" />
+                          การใช้ LINE Login
+                          จากเบราว์เซอร์อาจต้องเปิดหน้าต่างใหม่เพื่อยืนยันตัวตน
+                        </p>
+                      </div>
+                    )}
+                </>
+              )}
             </div>
           )}
-        </div>
+
+          {/* ✅ Provider Selection (for LINE app users) */}
+          {!showCredentialsForm && (
+            <div className="space-y-4">
+              <div className="text-center mb-6">
+                <h3 className="text-lg font-medium text-main-900 mb-2">
+                  เลือกวิธีการเข้าสู่ระบบ
+                </h3>
+                <p className="text-main-600 text-sm">
+                  เลือกวิธีที่คุณต้องการใช้ในการเข้าสู่ระบบ
+                </p>
+              </div>
+
+              {/* ✅ LINE Login (prioritized for LINE app) */}
+              <Button
+                onClick={() => handleProviderLogin("line")}
+                disabled={loadingProvider !== null}
+                fullWidth
+                variant="line"
+                size="lg"
+                icon={Icons.Line}
+                loading={loadingProvider === "line"}
+              >
+                {loadingProvider === "line"
+                  ? "กำลังเข้าสู่ระบบ LINE..."
+                  : "เข้าสู่ระบบด้วย LINE"}
+              </Button>
+
+              {/* Context-aware helper text */}
+              <div className="p-3 bg-social-line-50 rounded-lg">
+                <p className="text-xs text-social-line-700 text-center flex items-center justify-center">
+                  <span className="mr-1">🔥</span>
+                  คุณกำลังใช้งานผ่าน LINE App - แนะนำให้ใช้ LINE Login
+                </p>
+              </div>
+
+              {/* Alternative: Credentials */}
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-main-300" />
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-3 bg-white text-main-500">หรือ</span>
+                </div>
+              </div>
+
+              <Button
+                onClick={() => {
+                  setShowCredentialsForm(true);
+                  // ✅ Clear form errors when switching views
+                  clearErrors();
+                  reset();
+                }}
+                fullWidth
+                variant="outline"
+                icon={User}
+              >
+                ใช้ชื่อผู้ใช้และรหัสผ่าน
+              </Button>
+            </div>
+          )}
+
+          {/* ✅ Quick switch option */}
+          {showCredentialsForm && isInLineApp() && (
+            <div className="text-center">
+              <button
+                onClick={() => {
+                  setShowCredentialsForm(false);
+                  // ✅ Clear form errors when switching views
+                  clearErrors();
+                  reset();
+                }}
+                className="text-sm text-main-500 hover:text-main-700 transition-colors"
+              >
+                กลับไปหน้าเลือกวิธีการเข้าสู่ระบบ
+              </button>
+            </div>
+          )}
+        </CardContent>
 
         {/* Footer */}
-        <div className="text-center text-green-200 text-sm">
-          <p>© {new Date().getFullYear()} บริษัท โชคคูณโชค จำกัด</p>
+        <div className="px-6 pb-6">
+          <div className="text-center text-xs text-main-500">
+            มีปัญหาในการเข้าสู่ระบบ?{" "}
+            <a
+              href="/support"
+              className="text-primary-500 hover:text-primary-600 font-medium"
+            >
+              ติดต่อฝ่ายสนับสนุน
+            </a>
+          </div>
         </div>
-      </div>
+      </Card>
     </div>
-  );
-}
-
-// ✅ Loading component for Suspense fallback
-function LoginLoading() {
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen w-full">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-white mx-auto mb-4"></div>
-        <p className="text-white text-lg">กำลังโหลด...</p>
-      </div>
-    </div>
-  );
-}
-
-// ✅ Main component with Suspense wrapper
-export default function LoginPage() {
-  return (
-    <Suspense fallback={<LoginLoading />}>
-      <LoginContent />
-    </Suspense>
   );
 }

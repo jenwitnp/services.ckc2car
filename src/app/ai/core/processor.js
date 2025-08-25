@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai"; // Use the new package
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { tools } from "@/app/ai/tools";
 import { getSystemPrompt } from "./prompts";
 import { formatMessagesForGemini } from "./formatters";
@@ -117,8 +117,6 @@ export async function processAIRequest(
   }
 }
 
-// ... (keep existing imports and processAIRequest function) ...
-
 /**
  * A generic function to summarize different types of data using the AI.
  * @param {Array} data - The array of data objects (e.g., cars, appointments).
@@ -160,5 +158,394 @@ export async function summarizeData(data, originalUserQuery, summaryType) {
   } catch (error) {
     console.error(`Error summarizing ${summaryType} data:`, error);
     return "ขออภัยค่ะ เกิดข้อผิดพลาดในการสรุปข้อมูล";
+  }
+}
+
+export class AIProcessor {
+  constructor() {
+    if (!GEMINI_API_KEY) {
+      throw new Error("GOOGLE_GEMINI_API_KEY is not defined");
+    }
+    this.genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+  }
+
+  /**
+   * Analyze customer provinces from Thai messages
+   */
+  async analyzeCustomerProvinces(messages) {
+    try {
+      if (!messages || messages.length === 0) {
+        return {
+          provinces: [],
+          analysis: "ไม่มีข้อมูลข้อความเพื่อวิเคราะห์",
+          totalAnalyzed: 0,
+        };
+      }
+
+      // Sample messages to reduce AI cost
+      const sampleMessages = this.sampleMessages(messages, 50); // Further reduced for testing
+
+      console.log(
+        `[AIProcessor] Analyzing ${sampleMessages.length} messages for provinces`
+      );
+
+      const prompt = `
+วิเคราะห์ข้อความของลูกค้าต่อไปนี้ และหาจังหวัดที่ลูกค้าอาจมาจาก:
+
+${sampleMessages
+  .map(
+    (msg, index) =>
+      `${index + 1}. ลูกค้า ${msg.username || msg.userId}: "${msg.content}"`
+  )
+  .slice(0, 30) // Show only first 30 for prompt
+  .join("\n")}
+
+กรุณาระบุจังหวัดที่พบในข้อความและตอบเป็น JSON:
+{
+  "provinces": [
+    {
+      "name": "ชื่อจังหวัด",
+      "mentions": 1,
+      "confidence": 8
+    }
+  ],
+  "topProvinces": ["จังหวัดที่พบมากที่สุด"],
+  "analysis": "สรุปการวิเคราะห์",
+  "totalAnalyzed": ${sampleMessages.length}
+}
+
+หมายเหตุ: มองหาคำใบ้เช่น "ที่กรุงเทพ", "มาจากเชียงใหม่", "อยู่ที่ภูเก็ต" เป็นต้น
+      `;
+
+      const response = await this.callGemini(prompt);
+      const cleanedResponse = this.extractJsonFromResponse(response);
+      const result = JSON.parse(cleanedResponse);
+
+      return {
+        ...result,
+        analyzedAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      console.error("[AIProcessor] Province analysis error:", error);
+      return {
+        provinces: [],
+        analysis: `เกิดข้อผิดพลาดในการวิเคราะห์จังหวัด: ${error.message}`,
+        error: error.message,
+        totalAnalyzed: messages.length,
+      };
+    }
+  }
+
+  /**
+   * Analyze car interests from Thai messages
+   */
+  async analyzeCarInterests(messages) {
+    try {
+      if (!messages || messages.length === 0) {
+        return {
+          carBrands: [],
+          analysis: "ไม่มีข้อมูลข้อความเพื่อวิเคราะห์",
+          totalAnalyzed: 0,
+        };
+      }
+
+      // Filter messages that likely contain car-related content
+      const carRelatedMessages = messages.filter((msg) =>
+        this.containsCarKeywords(msg.content)
+      );
+
+      console.log(
+        `[AIProcessor] Found ${carRelatedMessages.length} car-related messages out of ${messages.length}`
+      );
+
+      if (carRelatedMessages.length === 0) {
+        return {
+          carBrands: [],
+          carModels: [],
+          serviceTypes: [],
+          analysis: "ไม่พบข้อความที่เกี่ยวข้องกับรถยนต์ในช่วงเวลาที่เลือก",
+          totalAnalyzed: messages.length,
+        };
+      }
+
+      // Sample for cost efficiency
+      const sampleMessages = this.sampleMessages(carRelatedMessages, 30);
+
+      const prompt = `
+วิเคราะห์ข้อความของลูกค้าเกี่ยวกับรถยนต์ต่อไปนี้:
+
+${sampleMessages
+  .map(
+    (msg, index) =>
+      `${index + 1}. ลูกค้า ${msg.username || msg.userId}: "${msg.content}"`
+  )
+  .join("\n")}
+
+กรุณาวิเคราะห์และตอบเป็น JSON:
+{
+  "carBrands": [
+    {
+      "brand": "Toyota",
+      "mentions": 2,
+      "popularity": 8
+    }
+  ],
+  "carModels": [
+    {
+      "model": "Civic",
+      "brand": "Honda",
+      "mentions": 1
+    }
+  ],
+  "serviceTypes": [
+    {
+      "service": "ซ่อมเครื่อง",
+      "mentions": 1
+    }
+  ],
+  "commonIssues": [
+    {
+      "issue": "ปัญหาเครื่อง",
+      "frequency": 1
+    }
+  ],
+  "insights": {
+    "topBrand": "แบรนด์ที่นิยมที่สุด",
+    "topService": "บริการที่ต้องการมากที่สุด"
+  },
+  "analysis": "สรุปการวิเคราะห์",
+  "totalAnalyzed": ${sampleMessages.length}
+}
+      `;
+
+      const response = await this.callGemini(prompt);
+      const cleanedResponse = this.extractJsonFromResponse(response);
+      const result = JSON.parse(cleanedResponse);
+
+      return {
+        ...result,
+        analyzedAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      console.error("[AIProcessor] Car interest analysis error:", error);
+      return {
+        carBrands: [],
+        carModels: [],
+        serviceTypes: [],
+        analysis: `เกิดข้อผิดพลาดในการวิเคราะห์ความสนใจด้านรถยนต์: ${error.message}`,
+        error: error.message,
+        totalAnalyzed: messages.length,
+      };
+    }
+  }
+
+  /**
+   * Generate comprehensive business insights
+   */
+  async generateBusinessInsights(analyticsData) {
+    try {
+      const prompt = `
+วิเคราะห์ข้อมูลธุรกิจ CKC Car Services ต่อไปนี้และให้คำแนะนำ:
+
+ข้อมูลลูกค้า:
+- ลูกค้าทั้งหมด: ${analyticsData.customers.totalUniqueCustomers} คน
+- ลูกค้าใหม่: ${analyticsData.customers.newCustomers} คน (ใน ${
+        analyticsData.timeRange
+      } วันที่ผ่านมา)
+- ลูกค้าที่มี username: ${analyticsData.customers.customersWithUsername} คน
+
+ข้อมูลข้อความ:
+- ข้อความทั้งหมด: ${analyticsData.messages.totalMessages} ข้อความ
+- ข้อความจากลูกค้า: ${analyticsData.messages.userMessages} ข้อความ
+- การตอบกลับ: ${analyticsData.messages.botResponses} ข้อความ
+- ผู้ใช้งาน active: ${analyticsData.messages.activeUsers} คน
+${
+  analyticsData.messages.adminMessages
+    ? `- ข้อความจากแอดมิน: ${analyticsData.messages.adminMessages} ข้อความ`
+    : ""
+}
+
+ข้อมูลการสนทนา:
+- บทสนทนาทั้งหมด: ${analyticsData.conversations.totalConversations} บทสนทนา
+- ข้อความทั้งหมด: ${analyticsData.conversations.totalMessages} ข้อความ
+
+โปรดให้คำแนะนำเป็นภาษาไทยในรูปแบบ JSON:
+{
+  "summary": "สรุปสถิติสำคัญ",
+  "trends": {
+    "customerGrowth": "การเติบโตของลูกค้า",
+    "engagement": "ระดับการมีส่วนร่วม"
+  },
+  "strengths": ["จุดแข็งของธุรกิจ"]
+}
+      `;
+
+      const response = await this.callGemini(prompt);
+      const cleanedResponse = this.extractJsonFromResponse(response);
+      const result = JSON.parse(cleanedResponse);
+
+      return {
+        ...result,
+        generatedAt: new Date().toISOString(),
+        dataRange: `${analyticsData.timeRange} วันที่ผ่านมา`,
+      };
+    } catch (error) {
+      console.error("[AIProcessor] Business insights error:", error);
+      return {
+        summary: `เกิดข้อผิดพลาดในการสร้างสรุป: ${error.message}`,
+        error: error.message,
+        generatedAt: new Date().toISOString(),
+      };
+    }
+  }
+
+  /**
+   * Helper: Check if message contains car-related keywords
+   */
+  containsCarKeywords(content) {
+    const carKeywords = [
+      "รถ",
+      "คาร์",
+      "car",
+      "auto",
+      "toyota",
+      "honda",
+      "nissan",
+      "mazda",
+      "isuzu",
+      "mitsubishi",
+      "ford",
+      "chevrolet",
+      "bmw",
+      "benz",
+      "mercedes",
+      "audi",
+      "lexus",
+      "infiniti",
+      "vios",
+      "yaris",
+      "camry",
+      "altis",
+      "civic",
+      "city",
+      "accord",
+      "jazz",
+      "freed",
+      "fortuner",
+      "hilux",
+      "ranger",
+      "everest",
+      "triton",
+      "navara",
+      "ซ่อม",
+      "เช็ค",
+      "ตรวจ",
+      "เปลี่ยน",
+      "service",
+      "maintenance",
+      "เครื่อง",
+      "ระบบ",
+      "เบรค",
+      "แอร์",
+      "ล้อ",
+      "ยาง",
+      "น้ำมัน",
+      "แบตเตอรี่",
+      "เกียร์",
+      "คลัช",
+      "โช๊ค",
+      "ไฟหน้า",
+      "กระจก",
+    ];
+
+    const lowerContent = content.toLowerCase();
+    return carKeywords.some((keyword) =>
+      lowerContent.includes(keyword.toLowerCase())
+    );
+  }
+
+  /**
+   * Helper: Sample messages for cost efficiency
+   */
+  sampleMessages(messages, maxCount) {
+    if (messages.length <= maxCount) {
+      return messages;
+    }
+
+    // Take a representative sample: recent messages + random sampling
+    const recent = messages.slice(0, Math.floor(maxCount * 0.6));
+    const remaining = messages.slice(Math.floor(maxCount * 0.6));
+    const randomSample = remaining
+      .sort(() => 0.5 - Math.random())
+      .slice(0, maxCount - recent.length);
+
+    return [...recent, ...randomSample];
+  }
+
+  /**
+   * Helper: Call Gemini AI with better error handling
+   */
+  async callGemini(prompt) {
+    try {
+      console.log(
+        `[AIProcessor] Calling Gemini AI... prompt length: ${prompt.length}`
+      );
+
+      const model = this.genAI.getGenerativeModel({
+        model: "gemini-1.5-flash",
+        generationConfig: {
+          temperature: 0.1, // Lower temperature for more consistent JSON
+          topP: 0.8,
+          topK: 40,
+          maxOutputTokens: 2048,
+        },
+      });
+
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
+
+      console.log(
+        `[AIProcessor] Gemini response received, length: ${text.length}`
+      );
+      return text;
+    } catch (error) {
+      console.error(`[AIProcessor] Gemini AI call failed:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Helper: Extract JSON from response with better error handling
+   */
+  extractJsonFromResponse(response) {
+    try {
+      // Remove markdown code blocks if present
+      let cleaned = response.replace(/```json\s*/g, "").replace(/```\s*/g, "");
+
+      // Try to find JSON in the response - more robust regex
+      const jsonMatch = cleaned.match(/\{[\s\S]*?\}(?=\s*$)/);
+      if (jsonMatch) {
+        return jsonMatch[0];
+      }
+
+      // Try to find any JSON object
+      const anyJsonMatch = cleaned.match(/\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/);
+      if (anyJsonMatch) {
+        return anyJsonMatch[0];
+      }
+
+      // If no JSON found, try to create a simple response
+      return `{
+        "summary": "${cleaned.replace(/"/g, '\\"')}",
+        "error": "Could not parse AI response as JSON"
+      }`;
+    } catch (error) {
+      console.error("[AIProcessor] Error extracting JSON:", error);
+      return `{
+        "summary": "เกิดข้อผิดพลาดในการแปลงข้อมูล",
+        "error": "${error.message}"
+      }`;
+    }
   }
 }
