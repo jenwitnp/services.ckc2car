@@ -242,11 +242,7 @@ ${sampleMessages
   async analyzeCarInterests(messages) {
     try {
       if (!messages || messages.length === 0) {
-        return {
-          carBrands: [],
-          analysis: "ไม่มีข้อมูลข้อความเพื่อวิเคราะห์",
-          totalAnalyzed: 0,
-        };
+        return this.getEmptyCarAnalysis();
       }
 
       // Filter messages that likely contain car-related content
@@ -259,20 +255,14 @@ ${sampleMessages
       );
 
       if (carRelatedMessages.length === 0) {
-        return {
-          carBrands: [],
-          carModels: [],
-          serviceTypes: [],
-          analysis: "ไม่พบข้อความที่เกี่ยวข้องกับรถยนต์ในช่วงเวลาที่เลือก",
-          totalAnalyzed: messages.length,
-        };
+        return this.getEmptyCarAnalysis();
       }
 
       // Sample for cost efficiency
       const sampleMessages = this.sampleMessages(carRelatedMessages, 30);
 
       const prompt = `
-วิเคราะห์ข้อความของลูกค้าเกี่ยวกับรถยนต์ต่อไปนี้:
+วิเคราะห์ข้อความของลูกค้าเกี่ยวกับรถยนต์ต่อไปนี้ และระบุแบรนด์ รุ่น และความต้องการของลูกค้า:
 
 ${sampleMessages
   .map(
@@ -281,62 +271,138 @@ ${sampleMessages
   )
   .join("\n")}
 
+⚠️ หมายเหตุสำคัญ:
+- ให้ความสำคัญกับการสะกดแบรนด์รถที่หลากหลาย เช่น "นิสัน" = "Nissan", "ฮอนด้า" = "Honda"
+- มองหาคำที่เกี่ยวกับการซื้อขาย เช่น "ขาย", "ซื้อ", "หา", "ต้องการ"
+- ระบุทั้งรถใหม่และรถมือสอง
+
+
 กรุณาวิเคราะห์และตอบเป็น JSON:
 {
   "carBrands": [
     {
-      "brand": "Toyota",
-      "mentions": 2,
-      "popularity": 8
+      "brand": "Nissan", 
+      "mentions": 1,
+      "popularity": 8,
+      "examples": ["นิสัน"],
+      "variations": ["นิสัน", "nissan"]
     }
   ],
   "carModels": [
     {
-      "model": "Civic",
-      "brand": "Honda",
-      "mentions": 1
+      "model": "ระบุรุ่นที่พบ",
+      "brand": "Nissan",
+      "mentions": 1,
+      "yearMentioned": [],
+      "contexts": ["ขาย", "มือสอง"]
+    }
+  ],
+  "carTypes": [
+    {
+      "type": "รถเก๋ง",
+      "mentions": 1,
+      "brands": ["Honda", "Toyota"]
     }
   ],
   "serviceTypes": [
     {
-      "service": "ซ่อมเครื่อง",
-      "mentions": 1
+      "service": "ขายรถมือสอง",
+      "mentions": 1,
+      "urgency": "ปกติ",
+      "relatedBrands": ["Nissan"]
     }
   ],
   "commonIssues": [
     {
-      "issue": "ปัญหาเครื่อง",
-      "frequency": 1
+      "issue": "ปัญหาเครื่องยนต์",
+      "frequency": 1,
+      "affectedModels": ["Civic", "Vios"],
+      "symptoms": ["เครื่องดับ", "สั่น"]
+    }
+  ],
+  "customerNeeds": [
+    {
+      "need": "ซื้อรถมือสอง Nissan",
+      "frequency": 1,
+      "timePreference": []
     }
   ],
   "insights": {
-    "topBrand": "แบรนด์ที่นิยมที่สุด",
-    "topService": "บริการที่ต้องการมากที่สุด"
+    "topBrand": "Honda",
+    "topModel": "Civic", 
+    "topService": "ซ่อมเครื่อง",
+    "urgentRequests": 0,
+    "repeatCustomers": 0
   },
-  "analysis": "สรุปการวิเคราะห์",
+  "analysis": "ลูกค้าส่วนใหญ่ใช้รถ Honda Civic และมีปัญหาเครื่องยนต์ ต้องการซ่อมด่วน",
   "totalAnalyzed": ${sampleMessages.length}
 }
-      `;
 
+หมายเหตุ: 
+- ดูรายละเอียดในข้อความเช่น ปี รุ่น สี ประเภทรถ
+- จับความต้องการเร่งด่วน เช่น "ด่วน" "วันนี้" "รีบ"
+- แยกแยะระหว่างรถยนต์ส่วนบุคคล รถกระบะ รถ SUV
+- หาปัญหาซ้ำที่เกิดกับรถรุ่นเดียวกัน
+`;
       const response = await this.callGemini(prompt);
       const cleanedResponse = this.extractJsonFromResponse(response);
-      const result = JSON.parse(cleanedResponse);
 
+      let result;
+      try {
+        result = JSON.parse(cleanedResponse);
+      } catch (parseError) {
+        console.error("[AIProcessor] JSON Parse Error:", parseError);
+        return this.getEmptyCarAnalysis("เกิดข้อผิดพลาดในการแปลงข้อมูล JSON");
+      }
+
+      // ✅ Ensure all required fields exist
       return {
-        ...result,
+        carBrands: result.carBrands || [],
+        carModels: result.carModels || [],
+        carTypes: result.carTypes || [],
+        serviceTypes: result.serviceTypes || [],
+        commonIssues: result.commonIssues || [],
+        customerNeeds: result.customerNeeds || [],
+        insights: {
+          topBrand: result.insights?.topBrand || "ไม่ระบุ",
+          topModel: result.insights?.topModel || "ไม่ระบุ",
+          topService: result.insights?.topService || "ไม่ระบุ",
+          urgentRequests: result.insights?.urgentRequests || 0,
+          repeatCustomers: result.insights?.repeatCustomers || 0,
+          ...result.insights,
+        },
+        analysis: result.analysis || "ไม่สามารถวิเคราะห์ข้อมูลได้",
+        totalAnalyzed: result.totalAnalyzed || sampleMessages.length,
         analyzedAt: new Date().toISOString(),
       };
     } catch (error) {
       console.error("[AIProcessor] Car interest analysis error:", error);
-      return {
-        carBrands: [],
-        carModels: [],
-        serviceTypes: [],
-        analysis: `เกิดข้อผิดพลาดในการวิเคราะห์ความสนใจด้านรถยนต์: ${error.message}`,
-        error: error.message,
-        totalAnalyzed: messages.length,
-      };
+      return this.getEmptyCarAnalysis(error.message);
     }
+  }
+
+  /**
+   * Helper: Get empty car analysis structure
+   */
+  getEmptyCarAnalysis(errorMessage = "ไม่มีข้อมูลข้อความเพื่อวิเคราะห์") {
+    return {
+      carBrands: [],
+      carModels: [],
+      carTypes: [],
+      serviceTypes: [],
+      commonIssues: [],
+      customerNeeds: [],
+      insights: {
+        topBrand: "ไม่ระบุ",
+        topModel: "ไม่ระบุ",
+        topService: "ไม่ระบุ",
+        urgentRequests: 0,
+        repeatCustomers: 0,
+      },
+      analysis: errorMessage,
+      totalAnalyzed: 0,
+      analyzedAt: new Date().toISOString(),
+    };
   }
 
   /**
@@ -400,67 +466,376 @@ ${
   }
 
   /**
-   * Helper: Check if message contains car-related keywords
+   * Process and categorize car analysis results
+   */
+  procesCarAnalysisResults(rawResults) {
+    try {
+      // ✅ Process car brands with additional insights
+      const processedBrands =
+        rawResults.carBrands?.map((brand) => ({
+          ...brand,
+          marketShare: this.calculateMarketShare(
+            brand.mentions,
+            rawResults.totalAnalyzed
+          ),
+          category: this.categorizeBrand(brand.brand),
+        })) || [];
+
+      // ✅ Process car models with generation info
+      const processedModels =
+        rawResults.carModels?.map((model) => ({
+          ...model,
+          generation: this.inferGeneration(model.model, model.yearMentioned),
+          segment: this.categorizeModel(model.model),
+        })) || [];
+
+      // ✅ Process service urgency
+      const processedServices =
+        rawResults.serviceTypes?.map((service) => ({
+          ...service,
+          priority: this.calculateServicePriority(
+            service.urgency,
+            service.mentions
+          ),
+          estimatedRevenue: this.estimateServiceRevenue(service.service),
+        })) || [];
+
+      return {
+        ...rawResults,
+        carBrands: processedBrands,
+        carModels: processedModels,
+        serviceTypes: processedServices,
+        businessInsights: {
+          topRevenueBrand: this.findTopRevenueBrand(processedBrands),
+          urgentServiceCount: this.countUrgentServices(processedServices),
+          repeatCustomerIndicators: this.findRepeatCustomers(rawResults),
+          marketTrends: this.analyzeTrends(processedBrands, processedModels),
+        },
+      };
+    } catch (error) {
+      console.error("[AIProcessor] Error processing car analysis:", error);
+      return rawResults; // Return original if processing fails
+    }
+  }
+
+  /**
+   * Helper methods for car data processing
+   */
+  calculateMarketShare(mentions, total) {
+    return total > 0 ? Math.round((mentions / total) * 100) : 0;
+  }
+
+  categorizeBrand(brand) {
+    const luxuryBrands = ["BMW", "Mercedes", "Audi", "Lexus"];
+    const japaneseEconomy = ["Toyota", "Honda", "Nissan", "Mazda"];
+    const pickupSpecialists = ["Isuzu", "Ford", "Mitsubishi"];
+
+    if (luxuryBrands.includes(brand)) return "Luxury";
+    if (japaneseEconomy.includes(brand)) return "Japanese Economy";
+    if (pickupSpecialists.includes(brand)) return "Pickup/Commercial";
+    return "Others";
+  }
+
+  categorizeModel(model) {
+    const sedans = ["Vios", "City", "Altis", "Camry", "Accord"];
+    const hatchbacks = ["Yaris", "Jazz", "March"];
+    const pickups = ["Hilux", "Ranger", "Triton", "Navara", "D-Max"];
+    const suvs = ["Fortuner", "Everest", "Pajero"];
+
+    if (sedans.some((s) => model.toLowerCase().includes(s.toLowerCase())))
+      return "Sedan";
+    if (hatchbacks.some((h) => model.toLowerCase().includes(h.toLowerCase())))
+      return "Hatchback";
+    if (pickups.some((p) => model.toLowerCase().includes(p.toLowerCase())))
+      return "Pickup";
+    if (suvs.some((s) => model.toLowerCase().includes(s.toLowerCase())))
+      return "SUV";
+    return "Others";
+  }
+
+  calculateServicePriority(urgency, mentions) {
+    const urgencyScore = {
+      สูง: 3,
+      กลาง: 2,
+      ต่ำ: 1,
+      ปกติ: 1,
+    };
+
+    const baseScore = urgencyScore[urgency] || 1;
+    const mentionMultiplier = Math.min(mentions / 5, 2); // Cap at 2x
+
+    return Math.round(baseScore * mentionMultiplier);
+  }
+
+  estimateServiceRevenue(service) {
+    // Estimated revenue in THB
+    const serviceRates = {
+      ซ่อมเครื่อง: 3000,
+      เปลี่ยนยาง: 2000,
+      เช็คระบบ: 800,
+      เปลี่ยนน้ำมัน: 1200,
+      ซ่อมแอร์: 2500,
+      ซ่อมเบรค: 3500,
+    };
+
+    return serviceRates[service] || 1500; // Default 1500 THB
+  }
+
+  /**
+   * Enhanced car keyword detection with fuzzy matching
    */
   containsCarKeywords(content) {
+    // ✅ First, try exact keyword matching
+    if (this.exactCarKeywordMatch(content)) {
+      return true;
+    }
+
+    // ✅ Then try fuzzy matching for Thai brands
+    return this.fuzzyCarBrandMatch(content);
+  }
+
+  /**
+   * Exact keyword matching (existing method)
+   */
+  exactCarKeywordMatch(content) {
     const carKeywords = [
+      // ✅ Popular Thai car brands (with variations)
+      "toyota",
+      "โตโยต้า",
+      "ถอนดา",
+      "โตโยต้",
+      "ถอยต้า",
+      "honda",
+      "ฮอนด้า",
+      "ฮอลด้า",
+      "ฮอนดา",
+      "ฮอนด้",
+      "nissan",
+      "นิสสัน",
+      "นิสัน",
+      "นิสแซ่น",
+      "นิสซาน", // ✅ Added variations
+      "mazda",
+      "มาสด้า",
+      "มาซด้า",
+      "มาสดา",
+      "isuzu",
+      "อีซูซุ",
+      "อิซูซุ",
+      "อีซูซู",
+      "mitsubishi",
+      "มิตซู",
+      "มิตซูบิชิ",
+      "มิตซูบิชี",
+      "มิตซุ",
+      "ford",
+      "ฟอร์ด",
+      "ฟอด",
+      "ฟอร์ต",
+      "chevrolet",
+      "เชฟโรเลต",
+      "เชฟโรเล็ต",
+      "เชฟ",
+      "bmw",
+      "บีเอ็มดับเบิลยู",
+      "บีเอ็มดับบลิว",
+      "บีเอ็ม",
+      "benz",
+      "เบนซ์",
+      "เบนส์",
+      "เบ้นซ์",
+      "mercedes",
+      "เมอร์เซเดส",
+      "audi",
+      "เอาดี้",
+      "เอาดี",
+      "อาวดี้",
+      "lexus",
+      "เล็กซัส",
+      "เล็กซัส",
+      "เลกซัส",
+      "hyundai",
+      "ฮุนได",
+      "ฮันได",
+      "ฮุนไดต์",
+      "kia",
+      "เกีย",
+      "เกียา",
+      "เกีย่า",
+      "mg",
+      "เอ็มจี",
+      "เอมจี",
+
+      // ✅ Popular models in Thailand (with variations)
+      "vios",
+      "วีออส",
+      "วีออษ",
+      "วีอส",
+      "yaris",
+      "ยาริส",
+      "ยาริท",
+      "ยาลิส",
+      "camry",
+      "แคมรี",
+      "แคมรี่",
+      "แคมริ",
+      "altis",
+      "อัลติส",
+      "อัลทิส",
+      "อลติส",
+      "civic",
+      "ซีวิค",
+      "ซีวิก",
+      "ซิวิค",
+      "ซิวิก",
+      "city",
+      "ซิตี้",
+      "ซิตี้",
+      "ซิตี",
+      "accord",
+      "แอคคอร์ด",
+      "แอคคอด",
+      "อคคอร์ด",
+      "jazz",
+      "แจซ",
+      "แจส",
+      "แจ๊ส",
+      "freed",
+      "ฟรีด",
+      "ฟรี้ด",
+      "fortuner",
+      "ฟอร์จูนเนอร์",
+      "ฟอจูนเนอร์",
+      "ฟอร์จูเนอร์",
+      "hilux",
+      "ไฮลักซ์",
+      "ไฮลัก",
+      "ไฮลักษ์",
+      "ranger",
+      "เรนเจอร์",
+      "เรนเจอ",
+      "เรนเจอ์",
+      "everest",
+      "เอเวอเรสต์",
+      "เอเวอเรส",
+      "เอเวอร์เรสต์",
+      "triton",
+      "ไตรทัน",
+      "ไตรตัน",
+      "ไทรทัน",
+      "navara",
+      "นาวารา",
+      "นาวาร่า",
+      "นาวาล่า",
+      "d-max",
+      "ดีแม็กซ์",
+      "ดีแม็ก",
+      "ดีแมกซ์",
+      "ดีแมก",
+      "bt-50",
+      "บีที-50",
+      "บีที50",
+      "บีที ห้าสิบ",
+
+      // ✅ Car types in Thai
       "รถ",
       "คาร์",
       "car",
       "auto",
-      "toyota",
-      "honda",
-      "nissan",
-      "mazda",
-      "isuzu",
-      "mitsubishi",
-      "ford",
-      "chevrolet",
-      "bmw",
-      "benz",
-      "mercedes",
-      "audi",
-      "lexus",
-      "infiniti",
-      "vios",
-      "yaris",
-      "camry",
-      "altis",
-      "civic",
-      "city",
-      "accord",
-      "jazz",
-      "freed",
-      "fortuner",
-      "hilux",
-      "ranger",
-      "everest",
-      "triton",
-      "navara",
+      "รถเก๋ง",
+      "รถกระบะ",
+      "รถบรรทุก",
+      "รถตู้",
+      "รถ suv",
+      "รถยนต์",
+      "รถยน",
+      "รถปิคอัพ",
+      "รถสี่ประตู",
+      "รถสองประตู",
+
+      // ✅ Service keywords
       "ซ่อม",
       "เช็ค",
       "ตรวจ",
       "เปลี่ยน",
+      "ขาย",
+      "ซื้อ", // ✅ Added ขาย, ซื้อ
       "service",
       "maintenance",
+      "บำรุงรักษา",
+      "ปรับ",
+      "แก้",
+      "ทำ",
+      "ดู",
+      "ช่วย",
+
+      // ✅ Car parts in Thai
       "เครื่อง",
+      "เครื่องยนต์",
       "ระบบ",
       "เบรค",
+      "เบรก",
       "แอร์",
+      "แอร์คอน",
       "ล้อ",
       "ยาง",
       "น้ำมัน",
       "แบตเตอรี่",
+      "แบต",
       "เกียร์",
       "คลัช",
       "โช๊ค",
       "ไฟหน้า",
+      "ไฟท้าย",
       "กระจก",
+      "กันชน",
+      "ประตู",
+      "หลังคา",
+      "เสียง",
+      "สั่น",
+      "ดับ",
+      "ติด",
+
+      // ✅ Problem indicators
+      "เสีย",
+      "พัง",
+      "ไม่ทำงาน",
+      "ปัญหา",
+      "แปลก",
+      "ผิดปกติ",
+      "เสียงดัง",
+      "ร้อน",
+      "ร่วง",
+      "หลุด",
+      "รั่ว",
     ];
 
     const lowerContent = content.toLowerCase();
     return carKeywords.some((keyword) =>
       lowerContent.includes(keyword.toLowerCase())
+    );
+  }
+
+  /**
+   * Fuzzy matching for Thai car brands
+   */
+  fuzzyCarBrandMatch(content) {
+    const thaiCarBrands = [
+      { variations: ["นิสัน", "นิสสัน", "nissan"], brand: "Nissan" },
+      { variations: ["ฮอนด้า", "ฮอนดา", "honda"], brand: "Honda" },
+      { variations: ["โตโยต้า", "โตโยต้", "toyota"], brand: "Toyota" },
+      { variations: ["มาสด้า", "มาซด้า", "mazda"], brand: "Mazda" },
+      { variations: ["อีซูซุ", "อิซูซุ", "isuzu"], brand: "Isuzu" },
+      { variations: ["ฟอร์ด", "ฟอด", "ford"], brand: "Ford" },
+      { variations: ["เบนซ์", "เบนส์", "benz", "mercedes"], brand: "Mercedes" },
+    ];
+
+    const lowerContent = content.toLowerCase();
+
+    return thaiCarBrands.some((brandData) =>
+      brandData.variations.some((variation) =>
+        lowerContent.includes(variation.toLowerCase())
+      )
     );
   }
 
