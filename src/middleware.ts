@@ -1,6 +1,74 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { getToken } from "next-auth/jwt"; // ✅ Import NextAuth JWT helper
+import { getToken } from "next-auth/jwt";
+
+// ✅ CORS configuration
+const CORS_CONFIG = {
+  allowedOrigins: [
+    "http://localhost",
+    "http://localhost",
+    "http://localhost",
+    "https://www.ckc2car.com",
+    "https://ckc2car.com",
+    "https://services.ckc2car.com",
+  ],
+  allowedMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "X-Requested-With",
+    "X-API-Key",
+  ],
+  credentials: true,
+};
+
+// ✅ Routes that need CORS (add your analytics route here)
+const CORS_ENABLED_ROUTES = [
+  "/api/v1/line/messages-customers-count",
+  "/api/v1/public/[...slug]",
+  // Add other routes that need CORS
+];
+
+// ✅ Function to add CORS headers
+function addCorsHeaders(response: NextResponse, origin?: string) {
+  // Check if origin is allowed
+  const isAllowedOrigin =
+    origin &&
+    (CORS_CONFIG.allowedOrigins.includes(origin) ||
+      CORS_CONFIG.allowedOrigins.includes("*"));
+
+  if (isAllowedOrigin || CORS_CONFIG.allowedOrigins.includes("*")) {
+    response.headers.set("Access-Control-Allow-Origin", origin || "*");
+  }
+
+  response.headers.set(
+    "Access-Control-Allow-Methods",
+    CORS_CONFIG.allowedMethods.join(", ")
+  );
+  response.headers.set(
+    "Access-Control-Allow-Headers",
+    CORS_CONFIG.allowedHeaders.join(", ")
+  );
+  response.headers.set(
+    "Access-Control-Allow-Credentials",
+    CORS_CONFIG.credentials.toString()
+  );
+  response.headers.set("Access-Control-Max-Age", "86400"); // 24 hours
+
+  return response;
+}
+
+// ✅ Check if route needs CORS
+function needsCors(pathname: string): boolean {
+  return CORS_ENABLED_ROUTES.some((route) => {
+    const regexPattern = route
+      .replace(/\[\.\.\.[\w]+\]/g, ".*")
+      .replace(/\[[\w]+\]/g, "[^/]+")
+      .replace(/\//g, "\\/");
+    const regex = new RegExp(`^${regexPattern}$`);
+    return regex.test(pathname);
+  });
+}
 
 // ✅ Simplified Route Configuration - Only specify what needs protection
 const ROUTE_CONFIG = {
@@ -46,6 +114,7 @@ const ROUTE_CONFIG = {
     "/api/v1/line/admin-coversation", // LINE webhook
     "/api/v1/auth/[...slug]", // Auth endpoints
     "/api/v1/public/[...slug]", // Public API
+    "/api/v1/line/messages-customers-count", // ✅ Add this for testing
     "/health", // Health check
     "/status", // Status check
   ],
@@ -159,8 +228,16 @@ async function getUserFromRequest(request: NextRequest) {
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const isApiRoute = pathname.startsWith("/api");
+  const origin = request.headers.get("origin");
 
   console.log(`[Middleware] ${request.method} ${pathname}`);
+
+  // ✅ Handle CORS preflight requests
+  if (request.method === "OPTIONS" && needsCors(pathname)) {
+    console.log(`[Middleware] CORS preflight for: ${pathname}`);
+    const response = new NextResponse(null, { status: 200 });
+    return addCorsHeaders(response, origin);
+  }
 
   // ✅ Skip middleware for static files and Next.js internals
   if (
@@ -174,7 +251,14 @@ export async function middleware(request: NextRequest) {
   // ✅ Check if route is explicitly always public
   if (matchesPattern(pathname, ROUTE_CONFIG.alwaysPublic)) {
     console.log(`[Middleware] Always public route: ${pathname}`);
-    return NextResponse.next();
+    const response = NextResponse.next();
+
+    // ✅ Add CORS headers if needed
+    if (needsCors(pathname)) {
+      return addCorsHeaders(response, origin);
+    }
+
+    return response;
   }
 
   // ✅ Get user authentication status
@@ -192,10 +276,17 @@ export async function middleware(request: NextRequest) {
         console.log(
           `[Middleware] Blocked unauthenticated API access: ${pathname}`
         );
-        return NextResponse.json(
+        const response = NextResponse.json(
           { error: "Authentication required", code: "AUTH_REQUIRED" },
           { status: 401 }
         );
+
+        // ✅ Add CORS headers to error response
+        if (needsCors(pathname)) {
+          return addCorsHeaders(response, origin);
+        }
+
+        return response;
       }
 
       // Check admin-only API routes
@@ -205,10 +296,17 @@ export async function middleware(request: NextRequest) {
           user.role !== USER_ROLES.SUPER_ADMIN
         ) {
           console.log(`[Middleware] Blocked non-admin API access: ${pathname}`);
-          return NextResponse.json(
+          const response = NextResponse.json(
             { error: "Admin access required", code: "ADMIN_REQUIRED" },
             { status: 403 }
           );
+
+          // ✅ Add CORS headers to error response
+          if (needsCors(pathname)) {
+            return addCorsHeaders(response, origin);
+          }
+
+          return response;
         }
       }
 
@@ -220,12 +318,25 @@ export async function middleware(request: NextRequest) {
       if (user.lineUserId) {
         response.headers.set("x-line-user-id", user.lineUserId);
       }
+
+      // ✅ Add CORS headers if needed
+      if (needsCors(pathname)) {
+        return addCorsHeaders(response, origin);
+      }
+
       return response;
     }
 
     // ✅ All other API routes are public by default
     console.log(`[Middleware] Public API route: ${pathname}`);
-    return NextResponse.next();
+    const response = NextResponse.next();
+
+    // ✅ Add CORS headers if needed
+    if (needsCors(pathname)) {
+      return addCorsHeaders(response, origin);
+    }
+
+    return response;
   }
 
   // ✅ Handle page routes
