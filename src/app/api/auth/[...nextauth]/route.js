@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import FacebookProvider from "next-auth/providers/facebook";
 import CredentialsProvider from "next-auth/providers/credentials";
 import LineProvider from "next-auth/providers/line"; // <-- 1. Import LineProvider
+import { cookies } from "next/headers";
 
 async function getUserByLineId(lineUserId) {
   try {
@@ -34,8 +35,6 @@ async function linkLineAccount(userId, lineUserId) {
     );
     return false;
   }
-
-  console.log("linkLineAccount : ", lineUserId);
   try {
     const response = await fetch(
       `${process.env.BASE_URL}/api/v1/users/line-connect/link`,
@@ -127,6 +126,7 @@ const handler = NextAuth({
               image: result.user.image ?? "",
               accessToken: result.token,
               role: result.user.role,
+              isLineConnected: result.user.isLineConnected || false,
             };
 
             // ✅ Only add LINE ID if it's not null/empty
@@ -154,7 +154,12 @@ const handler = NextAuth({
   ],
   callbacks: {
     async signIn({ account, profile }) {
+      console.log("[signIn] account : ", account);
+      console.log("[signIn] profile : ", profile);
       if (account.provider === "line") {
+        const cookieStore = cookies();
+        const linkUserId = cookieStore.get("linkUserId")?.value;
+
         try {
           const existingUser = await getUserByLineId(profile.sub);
           console.log(
@@ -165,10 +170,16 @@ const handler = NextAuth({
 
           if (existingUser) {
             return true;
+          } else if (linkUserId) {
+            console.error("Error in Line existingUser ID flow:", linkUserId);
+            await linkLineAccount(linkUserId, profile.sub);
+            return true;
+            // return false;
           } else {
             return `/login?error=LineAccountNotLinked&lineUserId=${profile.sub}`;
           }
         } catch (error) {
+          // return true;
           console.error("Error in LINE sign-in flow:", error);
           return `/login?error=LineAccountNotLinked&lineUserId=${profile.sub}`;
         }
@@ -177,7 +188,7 @@ const handler = NextAuth({
     },
 
     async jwt({ token, account, profile, user, trigger, session }) {
-      console.log("JWT Callback - Input:", { user, account, profile, trigger });
+      console.log("JWT Callback - Input:", token);
 
       // ✅ Handle user login (credentials or line)
       if (user) {
@@ -187,6 +198,7 @@ const handler = NextAuth({
           position: user.position,
           image: user.image,
           role: user.role, // ✅ Ensure role is included
+          isLineConnected: user.isLineConnected,
         };
 
         if (user.accessToken) {
@@ -212,6 +224,7 @@ const handler = NextAuth({
             position: existingUser.position,
             image: existingUser.image,
             role: existingUser.role, // ✅ Include role from existing user
+            isLineConnected: true,
           };
           token.provider = "line";
         }
@@ -265,6 +278,7 @@ const handler = NextAuth({
         session.user = {
           ...token.user,
           role: token.user.role, // ✅ Explicitly include role
+          isLineConnected: token.user.isLineConnected,
         };
       }
 

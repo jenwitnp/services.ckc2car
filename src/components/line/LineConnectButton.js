@@ -1,139 +1,202 @@
 "use client";
 
-import { useSession, signIn } from "next-auth/react";
 import { useState } from "react";
+import Button from "@/app/components/ui/Button";
+import { Icons } from "@/app/components/ui/Icons";
+import { toast } from "react-hot-toast"; // or your preferred toast library
 
 export default function LineConnectButton({
+  auth,
   onConnected,
   className = "",
   children,
+  variant = "default",
+  size = "default",
 }) {
-  const { data: session, update } = useSession();
-  const [isConnecting, setIsConnecting] = useState(false);
+  const [status, setStatus] = useState("idle"); // idle, loading, success, error
   const [error, setError] = useState(null);
 
+  console.log("LineConnectButton auth user:", auth?.user);
+
   const handleLineConnect = async () => {
-    if (!session?.user?.id) {
-      setError("Please login first");
+    // ✅ Validate user authentication
+    if (!auth?.user?.id) {
+      toast.error("กรุณาเข้าสู่ระบบก่อนเชื่อมต่อ LINE");
+      setError("กรุณาเข้าสู่ระบบก่อน");
       return;
     }
 
-    setIsConnecting(true);
+    console.log("🔗 Starting LINE connection for user:", auth.user.id);
+
+    // ✅ Set loading state
+    setStatus("loading");
     setError(null);
 
+    // ✅ Show loading toast
+    const loadingToast = toast.loading("กำลังเชื่อมต่อบัญชี LINE...");
+
     try {
-      console.log("[LineConnect] Starting LINE connection process");
+      // ✅ Call API directly without popup
+      const response = await fetch("/api/v1/users/line-connect/link", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          userId: auth.user.id,
+          // If you have lineUserId from LIFF or other source, add it here
+          // lineUserId: lineUserId,
+        }),
+      });
 
-      // Open LINE login in popup
-      const popup = window.open(
-        "/line-connect",
-        "line-connect",
-        "width=500,height=700,scrollbars=yes,resizable=yes"
-      );
+      const result = await response.json();
+      console.log("🔗 LINE connect API response:", result);
 
-      // Listen for popup messages
-      const handleMessage = async (event) => {
-        if (event.origin !== window.location.origin) return;
+      // ✅ Dismiss loading toast
+      toast.dismiss(loadingToast);
 
-        if (event.data.type === "LINE_CONNECT_SUCCESS") {
-          const { lineUserId } = event.data;
-          console.log("[LineConnect] Received LINE User ID:", lineUserId);
+      if (response.ok && (result.success || result.status === "ok")) {
+        // ✅ Success state
+        setStatus("success");
 
-          try {
-            // Link the accounts via API
-            const response = await fetch("/api/v1/users/line-connect/link", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                userId: session.user.id,
-                lineUserId: lineUserId,
-              }),
-            });
+        // ✅ Show success toast
+        toast.success("เชื่อมต่อบัญชี LINE สำเร็จ! 🎉");
 
-            const result = await response.json();
+        console.log("✅ Successfully connected LINE account");
 
-            if (result.success) {
-              console.log("[LineConnect] Successfully linked accounts");
+        // ✅ Call success callback
+        onConnected?.(result.lineUserId || auth.user.id);
 
-              // Update the session to reflect the change
-              await update({
-                linkedLineAccount: true,
-                lineUserId: lineUserId,
-              });
+        // ✅ Auto-reset status after 3 seconds
+        setTimeout(() => {
+          setStatus("idle");
+        }, 3000);
+      } else {
+        // ✅ Handle API errors
+        const errorMessage =
+          result.error || result.message || "ไม่สามารถเชื่อมต่อบัญชี LINE ได้";
 
-              onConnected?.(lineUserId);
-              popup.close();
-            } else {
-              console.error(
-                "[LineConnect] Failed to link accounts:",
-                result.error
-              );
-              setError(result.error);
-              popup.close();
-            }
-          } catch (linkError) {
-            console.error("[LineConnect] Error linking accounts:", linkError);
-            setError("Failed to link accounts");
-            popup.close();
-          }
-        } else if (event.data.type === "LINE_CONNECT_ERROR") {
-          console.error("[LineConnect] LINE connect error:", event.data.error);
-          setError(event.data.error);
-          popup.close();
-        } else if (event.data.type === "LINE_CONNECT_CANCELLED") {
-          console.log("[LineConnect] User cancelled LINE connection");
-          popup.close();
-        }
-      };
+        setStatus("error");
+        setError(errorMessage);
 
-      window.addEventListener("message", handleMessage);
+        // ✅ Show error toast
+        toast.error(`เกิดข้อผิดพลาด: ${errorMessage}`);
 
-      // Check if popup is closed manually
-      const checkClosed = setInterval(() => {
-        if (popup.closed) {
-          clearInterval(checkClosed);
-          window.removeEventListener("message", handleMessage);
-          setIsConnecting(false);
-        }
-      }, 1000);
-    } catch (error) {
-      console.error("[LineConnect] Error opening popup:", error);
-      setError("Failed to open LINE login");
-    } finally {
-      setIsConnecting(false);
+        console.error("❌ Failed to connect LINE account:", result);
+
+        // ✅ Auto-reset status after 5 seconds
+        setTimeout(() => {
+          setStatus("idle");
+          setError(null);
+        }, 5000);
+      }
+    } catch (fetchError) {
+      console.error("❌ LINE connect fetch error:", fetchError);
+
+      // ✅ Dismiss loading toast
+      toast.dismiss(loadingToast);
+
+      setStatus("error");
+      const errorMessage = "เกิดข้อผิดพลาดในการเชื่อมต่อ กรุณาลองใหม่อีกครั้ง";
+      setError(errorMessage);
+
+      // ✅ Show error toast
+      toast.error(errorMessage);
+
+      // ✅ Auto-reset status after 5 seconds
+      setTimeout(() => {
+        setStatus("idle");
+        setError(null);
+      }, 5000);
+    }
+  };
+
+  // ✅ Get button text and icon based on status
+  const getButtonContent = () => {
+    switch (status) {
+      case "loading":
+        return (
+          <>
+            <Icons.Spinner className="h-4 w-4 mr-2 animate-spin" />
+            กำลังเชื่อมต่อ...
+          </>
+        );
+      case "success":
+        return (
+          <>
+            <Icons.Check className="h-4 w-4 mr-2 text-green-600" />
+            เชื่อมต่อสำเร็จ!
+          </>
+        );
+      case "error":
+        return (
+          <>
+            <Icons.AlertCircle className="h-4 w-4 mr-2 text-red-600" />
+            ลองใหม่อีกครั้ง
+          </>
+        );
+      default:
+        return (
+          children || (
+            <>
+              <Icons.Line className="h-4 w-4 mr-2" />
+              เชื่อมต่อบัญชี LINE
+            </>
+          )
+        );
+    }
+  };
+
+  // ✅ Get button variant based on status
+  const getButtonVariant = () => {
+    switch (status) {
+      case "success":
+        return "success";
+      case "error":
+        return "destructive";
+      default:
+        return variant;
     }
   };
 
   return (
     <div className="line-connect-container">
-      <button
+      <Button
         onClick={handleLineConnect}
-        disabled={isConnecting}
-        className={`flex items-center justify-center px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
+        disabled={status === "loading" || !auth?.user?.id}
+        variant={getButtonVariant()}
+        size={size}
+        className={`transition-all duration-200 ${className}`}
       >
-        {isConnecting ? (
-          <>
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-            กำลังเชื่อมต่อ LINE...
-          </>
-        ) : (
-          children || (
-            <>
-              <svg
-                className="w-5 h-5 mr-2"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
-                <path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.629-.631.629-.346 0-.626-.285-.626-.629V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.104.495.254l2.462 3.33V8.108c0-.345.28-.63.626-.63.352 0 .631.285.631.63v4.771z" />
-              </svg>
-              เชื่อมต่อบัญชี LINE
-            </>
-          )
-        )}
-      </button>
+        {getButtonContent()}
+      </Button>
 
-      {error && (
-        <div className="mt-2 text-red-600 text-sm">เกิดข้อผิดพลาด: {error}</div>
+      {/* ✅ Optional: Show error message below button */}
+      {status === "error" && error && (
+        <div className="mt-2 text-sm text-red-600 bg-red-50 p-2 rounded border border-red-200">
+          <div className="flex items-center">
+            <Icons.AlertCircle className="h-4 w-4 mr-1 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Optional: Show success message below button */}
+      {status === "success" && (
+        <div className="mt-2 text-sm text-green-600 bg-green-50 p-2 rounded border border-green-200">
+          <div className="flex items-center">
+            <Icons.Check className="h-4 w-4 mr-1 flex-shrink-0" />
+            <span>เชื่อมต่อบัญชี LINE สำเร็จแล้ว</span>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Debug info - remove in production */}
+      {process.env.NODE_ENV === "development" && (
+        <div className="mt-1 text-xs text-gray-500">
+          Status: {status} | User ID: {auth?.user?.id || "None"}
+        </div>
       )}
     </div>
   );

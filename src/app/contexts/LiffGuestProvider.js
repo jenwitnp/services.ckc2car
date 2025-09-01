@@ -263,7 +263,7 @@ export function LiffGuestProvider({ children }) {
     guestUser,
     lineUser, // ✅ Expose LINE user data
     liff, // ✅ Expose LIFF instance for advanced usage
-
+    setLineUser,
     // ✅ Authentication functions
     loginWithLine,
     logoutFromLine,

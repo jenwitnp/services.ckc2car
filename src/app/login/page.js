@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useState, Suspense, use } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { signIn, useSession } from "next-auth/react";
+import { getSession, signIn, useSession } from "next-auth/react";
 import { useForm } from "react-hook-form";
 import { useLiffGuest } from "@/app/contexts/LiffGuestProvider";
 import {
@@ -17,7 +17,6 @@ import Input from "@/app/components/ui/Input";
 import InputRow from "@/app/components/ui/InputRow";
 import Alert from "@/app/components/ui/Alert";
 import { Icons } from "@/app/components/ui/Icons";
-import LineConnectButton from "@/components/line/LineConnectButton";
 
 import {
   User,
@@ -88,12 +87,13 @@ const LOGIN_PROVIDERS = {
 function LoginPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { data: session, status } = useSession();
+  const { data: session, status, update } = useSession();
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [loadingProvider, setLoadingProvider] = useState(null);
   const [showCredentialsForm, setShowCredentialsForm] = useState(true);
-  const { isInLineApp, getLineUserId } = useLiffGuest();
+  const { isInLineApp, lineUser, setLineUser } = useLiffGuest();
+  const [userLoginData, setUserLoginData] = useState(false);
 
   // ✅ React Hook Form setup
   const {
@@ -111,19 +111,32 @@ function LoginPageContent() {
     mode: "onBlur",
   });
 
+  console.log("line user is : ", lineUser);
   // Check for LINE account not linked error
   const authError = searchParams.get("error");
-  const lineUserId = searchParams.get("lineUserId");
+  const lineUserIdParam = searchParams.get("lineUserId");
   const redirectUrl = searchParams.get("redirect");
 
   useEffect(() => {
-    if (authError === "LineAccountNotLinked" && lineUserId) {
+    if (authError === "LineAccountNotLinked" && lineUserIdParam) {
       setError(
         "บัญชี LINE ของคุณยังไม่ได้เชื่อมต่อกับระบบ กรุณาเข้าสู่ระบบด้วยชื่อผู้ใช้และรหัสผ่านเพื่อเชื่อมต่อบัญชี LINE"
       );
       setShowCredentialsForm(true);
+      // setLineUserId(lineUserIdParam);
+      setLineUser(lineUserIdParam);
+      // Remove error and lineUserId from URL after login attempt
+      const params = new URLSearchParams(window.location.search);
+      params.delete("error");
+      params.delete("lineUserId");
+      const newUrl =
+        window.location.pathname +
+        (params.toString() ? `?${params.toString()}` : "");
+      window.history.replaceState({}, "", newUrl);
+
+      // console.log("[login page] result : ", result);
     }
-  }, [authError, lineUserId]);
+  }, [authError, lineUserIdParam, setLineUser]);
 
   // ✅ Auto-show LINE login for LINE app users
   useEffect(() => {
@@ -133,11 +146,30 @@ function LoginPageContent() {
   }, [isInLineApp, authError]);
 
   // Redirect if already authenticated
+  // useEffect(() => {
+  //   if (status === "authenticated" && !lineUser) {
+  //     router.push(redirectUrl || "/dashboard");
+  //   }
+  // }, [status, router, redirectUrl, lineUser]);
+
   useEffect(() => {
-    if (status === "authenticated" && !lineUserId) {
-      router.push(redirectUrl || "/dashboard");
+    if (userLoginData && userLoginData.user?.id) {
+      console.log("userLoginData updated:", userLoginData);
+      console.log(
+        "isLineConnected from state:",
+        userLoginData.user?.isLineConnected
+      );
+
+      if (!userLoginData.user?.isLineConnected) {
+        console.log("Setting notLineConnected to true");
+      } else {
+        console.log("LINE is connected or no LINE user, redirecting...");
+        // setTimeout(() => {
+        //   router.push(redirectUrl || "/dashboard");
+        // }, 500);
+      }
     }
-  }, [status, router, redirectUrl, lineUserId]);
+  }, [userLoginData, lineUser, router, redirectUrl]);
 
   // ✅ Generic provider login handler
   const handleProviderLogin = async (providerId) => {
@@ -145,10 +177,13 @@ function LoginPageContent() {
     setError("");
     clearErrors();
 
+    console.log("generic login here");
+
     try {
       const result = await signIn(providerId, {
         redirect: false,
         callbackUrl: redirectUrl || "/dashboard",
+        userId: userLoginData?.user?.id,
       });
 
       if (result?.error) {
@@ -175,12 +210,12 @@ function LoginPageContent() {
       const result = await signIn("credentials", {
         username: data.username,
         password: data.password,
-        lineUserIdToLink: lineUserId,
+        lineUserIdToLink: lineUser,
         redirect: false,
       });
 
-      console.log("[login page] result : ", result);
-
+      console.log("result credentials login : ", result);
+      let freshSession = null;
       if (result?.error) {
         if (result.error === "CredentialsSignin") {
           setFormError("username", {
@@ -192,11 +227,60 @@ function LoginPageContent() {
             message: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง",
           });
         } else {
-          setError("เกิดข้อผิดพลาดในการเข้าสู่ระบบ กรุณาลองใหม่อีกครั้ง");
+          setError("เกิดข้อผิดพลาดในการเข้าสู่ระบบ กรุณาลองใหม่อีกครั้ง jjjj");
         }
       } else if (result?.ok) {
-        reset();
-        setTimeout(() => {
+        try {
+          // ✅ Force session refresh with retry logic
+          await update();
+
+          freshSession = await getSession();
+          let attempts = 0;
+          const maxAttempts = 15; // Increase attempts
+
+          // ✅ Wait for session to be properly updated
+          while (
+            (!freshSession || !freshSession.user?.id) &&
+            attempts < maxAttempts
+          ) {
+            console.log(
+              `[Login] Waiting for session... attempt ${attempts + 1}`
+            );
+            await new Promise((resolve) => setTimeout(resolve, 300)); // Shorter intervals
+            freshSession = await getSession();
+            attempts++;
+          }
+
+          if (freshSession && freshSession.user?.id) {
+            console.log(
+              "✅ Session refreshed successfully:",
+              freshSession.user
+            );
+
+            console.log(
+              "Fresh session isLineConnected:",
+              freshSession?.user?.isLineConnected
+            );
+
+            setUserLoginData(freshSession);
+            document.cookie = `linkUserId=${freshSession.user.id}; path=/; max-age=600`;
+          } else {
+            console.error("❌ Failed to refresh session after login");
+            setError("เกิดข้อผิดพลาดในการรีเฟรชเซสชัน กรุณาโหลดหน้าใหม่");
+          }
+        } catch (sessionError) {
+          console.error("❌ Session refresh error:", sessionError);
+          setError("เกิดข้อผิดพลาดในการรีเฟรชเซสชัน กรุณาโหลดหน้าใหม่");
+        }
+        console.log("user login data :", result);
+
+        if (!freshSession?.user?.isLineConnected && !lineUser) {
+          console.log("user login data xx :", userLoginData);
+          reset();
+          return false;
+        }
+
+        return setTimeout(() => {
           router.push(redirectUrl || "/dashboard");
         }, 500);
       }
@@ -245,7 +329,12 @@ function LoginPageContent() {
   }
 
   // If user is already logged in but needs to connect LINE
-  if (session && lineUserId) {
+  // Check line user id from liff provider here
+  if (
+    userLoginData &&
+    !userLoginData.user?.isLineConnected &&
+    !lineUser // Only show if we have a lineUserId from liff provider
+  ) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-main-100 via-main-50 to-main-200 flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
@@ -260,13 +349,17 @@ function LoginPageContent() {
           </CardHeader>
 
           <CardContent className="space-y-4">
-            <LineConnectButton
-              onConnected={(lineId) => {
-                router.push("/dashboard");
-              }}
+            <Button
+              onClick={() => handleProviderLogin("line")}
+              disabled={loadingProvider !== null}
               fullWidth
-            />
-
+              variant="line"
+              size="lg"
+              icon={Icons.Line}
+              loading={loadingProvider === "line"}
+            >
+              เชื่อมต่อบัญชี
+            </Button>
             <Button
               variant="outline"
               fullWidth
@@ -365,7 +458,9 @@ function LoginPageContent() {
               </form>
 
               {/* ✅ Alternative Login Methods */}
-              {getAlternativeProviders().length > 0 && (
+              {getAlternativeProviders().filter(
+                (provider) => provider.id === "line" && !lineUser
+              ).length > 0 && (
                 <>
                   <div className="relative">
                     <div className="absolute inset-0 flex items-center">
@@ -377,30 +472,33 @@ function LoginPageContent() {
                   </div>
 
                   <div className="space-y-3">
-                    {getAlternativeProviders().map((provider) => {
-                      const isLoadingProvider = loadingProvider === provider.id;
-                      const Icon = provider.icon;
+                    {getAlternativeProviders()
+                      .filter((provider) => provider.id === "line" && !lineUser)
+                      .map((provider) => {
+                        const isLoadingProvider =
+                          loadingProvider === provider.id;
+                        const Icon = provider.icon;
 
-                      return (
-                        <Button
-                          key={provider.id}
-                          onClick={() => handleProviderLogin(provider.id)}
-                          disabled={loadingProvider !== null || isLoading}
-                          fullWidth
-                          variant="outline"
-                          className={`
+                        return (
+                          <Button
+                            key={provider.id}
+                            onClick={() => handleProviderLogin(provider.id)}
+                            disabled={loadingProvider !== null || isLoading}
+                            fullWidth
+                            variant="outline"
+                            className={`
                             ${provider.borderColor} ${provider.bgColor}
                             hover:${provider.bgColor} ${provider.textColor}
                           `}
-                          icon={Icon}
-                          loading={isLoadingProvider}
-                        >
-                          {isLoadingProvider
-                            ? `กำลังเข้าสู่ระบบ ${provider.name}...`
-                            : `เข้าสู่ระบบด้วย ${provider.name}`}
-                        </Button>
-                      );
-                    })}
+                            icon={Icon}
+                            loading={isLoadingProvider}
+                          >
+                            {isLoadingProvider
+                              ? `กำลังเข้าสู่ระบบ ${provider.name}...`
+                              : `เข้าสู่ระบบด้วย ${provider.name}`}
+                          </Button>
+                        );
+                      })}
                   </div>
 
                   {/* Special note for LINE in browser */}

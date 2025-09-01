@@ -66,7 +66,7 @@ const Input = forwardRef(
             type={inputType}
             className={cn(
               // Base styles
-              "w-full rounded-lg border transition-all duration-200",
+              "w-full rounded-lg text-main-700 border transition-all duration-200",
               "placeholder:text-main-400 focus:outline-none focus:ring-2 focus:ring-offset-0",
 
               // Padding with/without icons

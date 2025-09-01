@@ -15,6 +15,7 @@ const buttonVariants = {
     success: "bg-success-500 hover:bg-success-600 text-white shadow-md",
     warning: "bg-warning-500 hover:bg-warning-600 text-white shadow-md",
     line: "bg-social-line-500 hover:bg-social-line-600 text-white shadow-md",
+    success: "bg-green-500 text-white hover:bg-green-600",
   },
   size: {
     default: "h-10 px-4 py-2",

@@ -32,6 +32,11 @@ const ProfileAvatar = ({ session, size = 32, isMobile = false }) => {
     return <DefaultAvatar />;
   }
 
+  const handleLogout = () => {
+    document.cookie = "linkUserId=; path=/; max-age=0";
+    signOut({ callbackUrl: "/login" });
+  };
+
   return (
     <Image
       src={imageUrl}
@@ -129,11 +134,15 @@ export default function Header() {
 
 // ✅ Updated ProfileDisplay using new ProfileAvatar component
 const ProfileDisplay = ({ session, isMobile = false }) => {
+  const handleLogout = () => {
+    document.cookie = "linkUserId=; path=/; max-age=0";
+    signOut({ callbackUrl: "/login" });
+  };
   const items = [
     {
       icon: <LogOut size={16} />,
       label: "ออกจากระบบ",
-      onClick: () => signOut(),
+      onClick: () => handleLogout(),
     },
   ];
 
