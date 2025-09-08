@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
-import { Client } from "@line/bot-sdk";
+import { Client, validateSignature } from "@line/bot-sdk";
 import { saveData, fetchData } from "@/app/services/supabase/query.js";
-import { processAIRequest } from "@/app/ai/core/index.js";
-import crypto from "crypto";
+import { lineConfigService } from "@/app/services/supabase/lineConfig.js";
+// ✅ Use your existing LINE adapter
+import { processLineRequest } from "@/app/ai/adapters/line.js";
+import { ContextService } from "@/app/ai/services/context/ContextService.js";
+import { LineUtilsService } from "@/app/services/line/LineUtilsService.js";
+import { LineResponseBuilder } from "@/app/services/line/LineResponseBuilder.js";
 
 const config = {
   channelAccessToken: process.env.LINE_ADMIN_CHANNEL_ACCESS_TOKEN,
@@ -10,27 +14,29 @@ const config = {
 };
 
 const client = new Client(config);
+const contextService = new ContextService();
 
-// Configuration for admin response behavior
-const ADMIN_RESPONSE_CONFIG = {
-  mode: process.env.LINE_ADMIN_RESPONSE_MODE || "auto", // "auto", "manual", "ai", "off"
-  autoResponseDelay: parseInt(process.env.LINE_AUTO_RESPONSE_DELAY) || 0, // seconds
-  enableSmartResponse: process.env.LINE_ENABLE_SMART_RESPONSE === "true",
-  businessHours: {
-    enabled: process.env.LINE_BUSINESS_HOURS_ENABLED === "true",
-    start: process.env.LINE_BUSINESS_START || "09:00",
-    end: process.env.LINE_BUSINESS_END || "18:00",
-    timezone: process.env.LINE_BUSINESS_TIMEZONE || "Asia/Bangkok",
-  },
-};
+// ✅ Use LINE SDK's built-in signature verification
+function verifySignature(body, signature) {
+  try {
+    return validateSignature(
+      body,
+      process.env.LINE_ADMIN_CHANNEL_SECRET,
+      signature
+    );
+  } catch (error) {
+    console.error("LINE signature verification error:", error);
+    return false;
+  }
+}
 
 export async function POST(request) {
   try {
     const body = await request.text();
     const signature = request.headers.get("x-line-signature");
 
-    // Verify LINE signature
     if (!verifySignature(body, signature)) {
+      console.error("Invalid LINE signature for admin channel");
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }
 
@@ -60,395 +66,351 @@ async function handleLineEvent(event) {
     const lineUserId = source.userId;
     const messageContent = message.text;
 
-    // Get LINE user profile
+    console.log("Processing LINE admin message:", {
+      userId: lineUserId,
+      messageLength: messageContent?.length,
+      timestamp: timestamp,
+    });
+
+    // ✅ Get LINE user profile
     let lineUsername = null;
     try {
       const profile = await client.getProfile(lineUserId);
-      lineUsername = profile.displayName;
+      const formattedProfile = LineUtilsService.formatUserProfile(profile);
+      lineUsername = formattedProfile.displayName;
     } catch (error) {
       console.log("Could not get LINE profile:", error);
     }
 
-    // Generate conversation session ID (daily session)
-    const today = new Date().toISOString().split("T")[0];
-    const conversationSessionId = `${lineUserId}_${today}`;
+    // ✅ Generate session ID
+    const conversationSessionId = LineUtilsService.generateSessionId(
+      lineUserId,
+      "admin"
+    );
 
-    // Save user message to database
-    await saveConversationMessage({
-      line_user_id: lineUserId,
-      line_username: lineUsername,
-      message_role: "user",
-      message_content: messageContent,
-      message_type: message.type,
-      conversation_session_id: conversationSessionId,
-      metadata: {
-        timestamp: new Date(timestamp).toISOString(),
-        message_id: message.id,
-        source_type: source.type,
+    // ✅ Format and save user message
+    const userMessageData = LineUtilsService.formatMessageForDatabase(
+      {
+        lineUserId: lineUserId,
+        lineUsername: lineUsername,
+        role: "user",
+        content: messageContent,
+        type: message.type,
+        sessionId: conversationSessionId,
+        metadata: {
+          timestamp: new Date(timestamp).toISOString(),
+          message_id: message.id,
+          source_type: source.type,
+          channel_type: "admin",
+          event_type: event.type,
+        },
       },
-    });
+      "customer"
+    );
 
-    // Process admin response based on configuration
+    await saveConversationMessage(userMessageData);
+
+    // Get admin response configuration
+    const ADMIN_RESPONSE_CONFIG = await getAdminResponseConfig();
+    console.log("auto res config :", ADMIN_RESPONSE_CONFIG);
+
+    // ✅ Process admin response
     const adminResponse = await processAdminResponse(
       messageContent,
       lineUserId,
-      event
+      event,
+      ADMIN_RESPONSE_CONFIG
     );
 
     if (adminResponse && adminResponse.shouldSend) {
-      // Add delay if configured
+      // Add configured delay
       if (ADMIN_RESPONSE_CONFIG.autoResponseDelay > 0) {
         await new Promise((resolve) =>
           setTimeout(resolve, ADMIN_RESPONSE_CONFIG.autoResponseDelay * 1000)
         );
       }
 
-      // Save admin response to database
-      await saveConversationMessage({
-        line_user_id: lineUserId,
-        line_username: lineUsername,
-        message_role: "admin",
-        message_content: adminResponse.text,
-        message_type: "text",
-        conversation_session_id: conversationSessionId,
-        admin_id: adminResponse.adminId,
-        admin_name: adminResponse.adminName,
-        metadata: {
-          response_timestamp: new Date().toISOString(),
-          auto_generated: adminResponse.autoGenerated || false,
-          response_mode: adminResponse.mode,
-          confidence_score: adminResponse.confidenceScore,
+      // ✅ Format and save admin response - use text for database
+      const adminMessageData = LineUtilsService.formatMessageForDatabase(
+        {
+          lineUserId: lineUserId,
+          lineUsername: lineUsername,
+          role: "admin",
+          content:
+            adminResponse.text ||
+            adminResponse.response?.text ||
+            adminResponse.response?.altText ||
+            "AI Response",
+          type: "text",
+          sessionId: conversationSessionId,
+          adminId: adminResponse.adminId,
+          adminName: adminResponse.adminName,
+          metadata: {
+            response_timestamp: new Date().toISOString(),
+            auto_generated: adminResponse.autoGenerated || false,
+            response_mode: adminResponse.mode,
+            confidence_score: adminResponse.confidenceScore,
+            channel_type: "admin",
+            response_type: adminResponse.response?.type, // Track if it was text/flex
+          },
         },
+        "admin"
+      );
+
+      await saveConversationMessage(adminMessageData);
+
+      // ✅ Send LINE response - use the full response object
+      console.log("Sending LINE response:", {
+        type: adminResponse.response?.type,
+        hasText: !!adminResponse.response?.text,
+        hasContents: !!adminResponse.response?.contents,
       });
 
-      // Send response to LINE user
-      await client.replyMessage(event.replyToken, {
-        type: "text",
-        text: adminResponse.text,
-      });
-    } else if (!adminResponse?.shouldSend) {
-      console.log(
-        `No response sent for user ${lineUserId}. Mode: ${ADMIN_RESPONSE_CONFIG.mode}`
-      );
+      await client.replyMessage(event.replyToken, adminResponse.response);
     }
   } catch (error) {
     console.error("Error handling LINE event:", error);
+
+    // Emergency fallback response
+    try {
+      const fallbackResponse = LineResponseBuilder.createTextResponse(
+        "ขออภัยครับ เกิดข้อผิดพลาดในระบบ กรุณาลองใหม่อีกครั้งครับ"
+      );
+      await client.replyMessage(event.replyToken, fallbackResponse);
+    } catch (fallbackError) {
+      console.error("Even fallback response failed:", fallbackError);
+    }
   }
 }
 
+// ✅ Save function with better error handling
 async function saveConversationMessage(messageData) {
   try {
-    const result = await saveData("line_admin_conversations", messageData);
-
-    if (!result.success) {
-      console.error("Failed to save conversation:", result.error);
-      return false;
-    }
-
-    console.log("Conversation message saved:", result.data.id);
-    return true;
-  } catch (error) {
-    console.error("Error saving conversation message:", error);
-    return false;
-  }
-}
-
-async function processAdminResponse(userMessage, lineUserId, event) {
-  const mode = ADMIN_RESPONSE_CONFIG.mode;
-
-  switch (mode) {
-    case "off":
-      return { shouldSend: false };
-
-    case "manual":
-      return await handleManualMode(userMessage, lineUserId);
-
-    case "ai":
-      return await handleAIMode(userMessage, lineUserId);
-
-    case "auto":
-    default:
-      return await handleAutoMode(userMessage, lineUserId);
-  }
-}
-
-async function handleAutoMode(userMessage, lineUserId) {
-  // Check business hours if enabled
-  if (ADMIN_RESPONSE_CONFIG.businessHours.enabled) {
-    const isBusinessHours = checkBusinessHours();
-    if (!isBusinessHours) {
-      return {
-        text: "ขอบคุณสำหรับข้อความของคุณ ขณะนี้อยู่นอกเวลาทำการ เราจะติดต่อกลับในเวลาทำการ (9:00-18:00 น.)",
-        adminId: null,
-        adminName: "Auto Response System (After Hours)",
-        autoGenerated: true,
-        shouldSend: true,
-        mode: "auto_after_hours",
-      };
-    }
-  }
-
-  // Smart response based on message content
-  if (ADMIN_RESPONSE_CONFIG.enableSmartResponse) {
-    return await generateSmartResponse(userMessage, lineUserId);
-  }
-
-  // Default auto response
-  return {
-    text: "ขอบคุณสำหรับข้อความของคุณ เราจะตอบกลับในไม่ช้า",
-    adminId: null,
-    adminName: "Auto Response System",
-    autoGenerated: true,
-    shouldSend: true,
-    mode: "auto_default",
-  };
-}
-
-async function handleManualMode(userMessage, lineUserId) {
-  // In manual mode, only save the message but don't auto-respond
-  // Admins will respond manually through admin interface
-
-  // Optional: Send a notification to admins about new message
-  await notifyAdmins(userMessage, lineUserId);
-
-  return { shouldSend: false, mode: "manual" };
-}
-
-async function handleAIMode(userMessage, lineUserId) {
-  try {
-    // Get conversation history for context
-    const conversationHistory = await getRecentConversationHistory(lineUserId);
-
-    // Generate AI response
-    const aiResponse = await generateAIResponse(
-      userMessage,
-      conversationHistory,
-      lineUserId
-    );
-
-    return {
-      text: aiResponse.text,
-      adminId: null,
-      adminName: "AI Assistant",
-      autoGenerated: true,
-      shouldSend: true,
-      mode: "ai",
-      confidenceScore: aiResponse.confidence,
-    };
-  } catch (error) {
-    console.error("AI response generation failed:", error);
-    // Fallback to auto mode
-    return await handleAutoMode(userMessage, lineUserId);
-  }
-}
-
-async function generateSmartResponse(userMessage, lineUserId) {
-  try {
-    // Analyze message intent
-    const intent = analyzeMessageIntent(userMessage);
-
-    let responseText = "";
-    let adminName = "Smart Auto Response";
-
-    switch (intent.type) {
-      case "greeting":
-        responseText =
-          "สวัสดีครับ/ค่ะ ยินดีต้อนรับสู่ CKC Car Services มีอะไรให้เราช่วยเหลือไหมครับ/ค่ะ";
-        break;
-
-      case "car_inquiry":
-        responseText =
-          "ขอบคุณที่สนใจรถของเราครับ/ค่ะ เรามีรถหลากหลายรุ่นให้เลือก ท่านสนใจรถรุ่นไหนเป็นพิเศษไหมครับ/ค่ะ";
-        break;
-
-      case "price_inquiry":
-        responseText =
-          "เรื่องราคารถ เราจะแจ้งราคาพิเศษให้ท่านครับ/ค่ะ ขอเบอร์โทรติดต่อหน่อยได้ไหมครับ/ค่ะ";
-        break;
-
-      case "contact_request":
-        responseText =
-          "แอดมินจะติดต่อกลับไปให้ท่านในไม่ช้าครับ/ค่ะ หรือท่านสะดวกให้เราโทรหาเมื่อไหร่ครับ/ค่ะ";
-        break;
-
-      case "complaint":
-        responseText =
-          "ขอโทษด้วยครับ/ค่ะ เราจะส่งเรื่องให้ทีมที่เกี่ยวข้องดูแลท่านโดยเร็วที่สุดครับ/ค่ะ";
-        adminName = "Customer Service";
-        break;
-
-      case "phone_number":
-        responseText =
-          "ขอบคุณสำหรับเบอร์โทรครับ/ค่ะ เราจะให้แอดมินโทรหาท่านในไม่ช้าครับ/ค่ะ";
-        break;
-
-      default:
-        responseText = "ขอบคุณสำหรับข้อความของคุณ เราจะตอบกลับในไม่ช้า";
-    }
-
-    return {
-      text: responseText,
-      adminId: null,
-      adminName: adminName,
-      autoGenerated: true,
-      shouldSend: true,
-      mode: "smart_auto",
-      intent: intent.type,
-      confidenceScore: intent.confidence,
-    };
-  } catch (error) {
-    console.error("Smart response generation failed:", error);
-    return await handleAutoMode(userMessage, lineUserId);
-  }
-}
-
-function analyzeMessageIntent(message) {
-  const lowerMessage = message.toLowerCase();
-
-  // Greeting patterns
-  if (/สวัสดี|หวัดดี|ดีครับ|ดีค่ะ|hello|hi/.test(lowerMessage)) {
-    return { type: "greeting", confidence: 0.9 };
-  }
-
-  // Car inquiry patterns
-  if (/รถ|คาร์|car|ราคา|price|สนใจ|ดู|เช่า|ซื้อ/.test(lowerMessage)) {
-    return { type: "car_inquiry", confidence: 0.8 };
-  }
-
-  // Price inquiry patterns
-  if (/ราคา|เท่าไร|เท่าไหร่|price|cost|ค่า/.test(lowerMessage)) {
-    return { type: "price_inquiry", confidence: 0.85 };
-  }
-
-  // Contact request patterns
-  if (/โทร|ติดต่อ|contact|call|คุย/.test(lowerMessage)) {
-    return { type: "contact_request", confidence: 0.8 };
-  }
-
-  // Phone number patterns
-  if (/\d{3}[-.\s]?\d{3}[-.\s]?\d{4}|0\d{8,9}/.test(message)) {
-    return { type: "phone_number", confidence: 0.95 };
-  }
-
-  // Complaint patterns
-  if (/ร้องเรียน|แย่|ไม่ดี|ปัญหา|เสีย|complaint/.test(lowerMessage)) {
-    return { type: "complaint", confidence: 0.7 };
-  }
-
-  return { type: "general", confidence: 0.5 };
-}
-
-async function generateAIResponse(
-  userMessage,
-  conversationHistory,
-  lineUserId
-) {
-  try {
-    const systemPrompt = `You are a helpful customer service assistant for CKC Car Services, a car dealership in Thailand. 
-    Respond in Thai language, be polite and professional. 
-    Help customers with car inquiries, pricing, and general questions.
-    Keep responses concise and friendly.`;
-
-    const conversationContext = conversationHistory
-      .slice(-10) // Last 10 messages for context
-      .map((msg) => `${msg.message_role}: ${msg.message_content}`)
-      .join("\n");
-
-    const userPrompt = `
-    Previous conversation:
-    ${conversationContext}
-    
-    Customer message: ${userMessage}
-    
-    Please provide a helpful response:`;
-
-    const aiResponse = await processAIRequest(
-      [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      {},
-      "web",
-      { temperature: 0.7, maxTokens: 200 }
-    );
-
-    return {
-      text: aiResponse.content.trim(),
-      confidence: 0.8,
-    };
-  } catch (error) {
-    console.error("AI response generation error:", error);
-    throw error;
-  }
-}
-
-async function getRecentConversationHistory(lineUserId) {
-  try {
-    const result = await fetchData("line_admin_conversations", {
-      filters: { line_user_id: lineUserId },
-      sort: [{ column: "created_at", ascending: false }],
-      limit: 20,
+    console.log("Saving message to line_admin_conversations:", {
+      line_user_id: messageData.line_user_id,
+      message_role: messageData.message_role,
+      message_type: messageData.message_type,
+      conversation_session_id: messageData.conversation_session_id,
+      has_admin_id: !!messageData.admin_id,
+      has_admin_name: !!messageData.admin_name,
+      metadata_keys: Object.keys(messageData.metadata || {}),
     });
 
-    return result.success ? result.data.reverse() : [];
+    const result = await saveData("line_admin_conversations", messageData);
+
+    console.log("Message saved successfully:", result);
+    return result;
   } catch (error) {
-    console.error("Error fetching conversation history:", error);
+    console.error("Error saving conversation message:", error);
+    console.error("Message data:", messageData);
+  }
+}
+
+async function getAdminResponseConfig() {
+  try {
+    const config = await lineConfigService.getConfig();
+    return {
+      mode: config.mode || "manual",
+      autoResponseDelay: config.auto_response_delay || 0,
+      enableSmartResponse: config.enable_smart_response || false,
+      businessHours: {
+        enabled: config.business_hours_enabled || false,
+        start: config.business_hours_start || "09:00",
+        end: config.business_hours_end || "18:00",
+        timezone: config.business_hours_timezone || "Asia/Bangkok",
+      },
+    };
+  } catch (error) {
+    console.error("Error getting admin response config:", error);
+    return {
+      mode: "manual",
+      autoResponseDelay: 0,
+      enableSmartResponse: false,
+      businessHours: {
+        enabled: false,
+        start: "09:00",
+        end: "18:00",
+        timezone: "Asia/Bangkok",
+      },
+    };
+  }
+}
+
+async function processAdminResponse(messageContent, lineUserId, event, config) {
+  try {
+    if (config.mode === "manual") {
+      return { shouldSend: false };
+    }
+
+    // Check business hours
+    if (config.businessHours.enabled) {
+      const isWithinHours = LineUtilsService.checkBusinessHours(
+        config.businessHours
+      );
+      if (!isWithinHours) {
+        return {
+          shouldSend: true,
+          response: LineResponseBuilder.createTextResponse(
+            `ขออภัยค่ะ ขณะนี้อยู่นอกเวลาทำการ เวลาทำการคือ ${config.businessHours.start} - ${config.businessHours.end} น. เราจะตอบกลับในเวลาทำการนะคะ`
+          ),
+          autoGenerated: true,
+          mode: "business_hours",
+          adminId: null,
+          adminName: "Business Hours Bot",
+        };
+      }
+    }
+
+    // ✅ FIXED: Use your existing LINE adapter for full AI functionality
+    if (config.enableSmartResponse && config.mode === "ai") {
+      try {
+        // ✅ Get context using your existing ContextService
+        const baseContext = await contextService.getUserContext(lineUserId);
+        const context = {
+          ...baseContext,
+          userId: lineUserId,
+          platform: "line",
+          channel: "admin", // ✅ Identify as admin channel
+          isAdminChannel: true,
+        };
+
+        console.log("[Admin LINE] Processing with LINE adapter:", {
+          userId: lineUserId,
+          messageLength: messageContent.length,
+          hasCarModels: !!context.carModels,
+        });
+
+        // ✅ Use your existing LINE adapter - it handles everything!
+        const aiResponse = await processLineRequest(messageContent, context);
+
+        console.log("[Admin LINE] AI Response:", {
+          type: aiResponse?.type,
+          hasText: !!aiResponse?.text,
+          hasContents: !!aiResponse?.contents,
+          isFlexMessage: aiResponse?.type === "flex",
+        });
+
+        // ✅ Your LINE adapter already returns properly formatted responses
+        if (aiResponse) {
+          // Extract text for logging/metadata
+          let responseText = null;
+          if (aiResponse.type === "text") {
+            responseText = aiResponse.text;
+          } else if (aiResponse.type === "flex") {
+            responseText = aiResponse.altText || "Flex message response";
+          }
+
+          return {
+            shouldSend: true,
+            response: aiResponse, // ✅ Use the full LINE response object
+            text: responseText, // For database logging
+            autoGenerated: true,
+            mode: "ai_smart",
+            confidenceScore: 0.9,
+            adminId: null,
+            adminName: "AI Assistant",
+          };
+        } else {
+          console.warn(
+            "AI response is null/undefined, falling back to default"
+          );
+        }
+      } catch (aiError) {
+        console.error(
+          "AI processing failed, falling back to default:",
+          aiError
+        );
+      }
+    }
+
+    // Default auto response (fallback)
+    const defaultText =
+      "สวัสดีครับ ขอบคุณที่ติดต่อเรา ทีมงานจะติดต่อกลับไปในเร็วๆ นี้นะครับ";
+    return {
+      shouldSend: true,
+      response: LineResponseBuilder.createTextResponse(defaultText),
+      text: defaultText,
+      autoGenerated: true,
+      mode: "default_auto",
+      adminId: null,
+      adminName: "Auto Response",
+    };
+  } catch (error) {
+    console.error("Error processing admin response:", error);
+    return { shouldSend: false };
+  }
+}
+
+// ✅ Add function to get conversation history for AI context
+async function getRecentConversationHistory(lineUserId, limit = 10) {
+  try {
+    const result = await fetchData("line_admin_conversations", {
+      filters: {
+        line_user_id: lineUserId,
+      },
+      sort: ["created_at", "desc"],
+      limit: limit,
+    });
+
+    if (!result.success || !result.data) {
+      return [];
+    }
+
+    // ✅ Format for AI - convert to expected message format
+    return result.data.reverse().map((msg) => ({
+      role: msg.message_role === "admin" ? "assistant" : "user",
+      content: msg.message_content,
+      timestamp: msg.created_at,
+    }));
+  } catch (error) {
+    console.error("Error getting conversation history:", error);
     return [];
   }
 }
 
-async function notifyAdmins(userMessage, lineUserId) {
-  // Implement admin notification logic here
-  // Could be email, push notification, or internal messaging system
-  console.log(`New message from ${lineUserId}: ${userMessage}`);
-}
-
-function checkBusinessHours() {
-  const now = new Date();
-  const options = {
-    timeZone: ADMIN_RESPONSE_CONFIG.businessHours.timezone,
-    hour12: false,
-  };
-
-  const currentTime = now.toLocaleTimeString("en-US", options).slice(0, 5);
-  const startTime = ADMIN_RESPONSE_CONFIG.businessHours.start;
-  const endTime = ADMIN_RESPONSE_CONFIG.businessHours.end;
-
-  return currentTime >= startTime && currentTime <= endTime;
-}
-
-function verifySignature(body, signature) {
-  const hash = crypto
-    .createHmac("sha256", process.env.LINE_ADMIN_CHANNEL_SECRET)
-    .update(body)
-    .digest("base64");
-
-  return hash === signature;
-}
-
-// GET endpoint for retrieving conversation data
+// ✅ GET endpoints
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const action = searchParams.get("action");
-    const lineUserId = searchParams.get("userId");
-    const date = searchParams.get("date");
-    const adminId = searchParams.get("adminId");
 
     switch (action) {
-      case "conversations":
-        return await getConversations(lineUserId, date);
-
-      case "daily_summary":
-        return await getDailySummary(date);
-
-      case "admin_performance":
-        return await getAdminPerformance(adminId, date);
-
       case "config":
+        const config = await lineConfigService.getConfig();
         return NextResponse.json({
           success: true,
-          config: ADMIN_RESPONSE_CONFIG,
+          config: {
+            mode: config.mode,
+            autoResponseDelay: config.auto_response_delay,
+            enableSmartResponse: config.enable_smart_response,
+            businessHours: {
+              enabled: config.business_hours_enabled,
+              start: config.business_hours_start,
+              end: config.business_hours_end,
+              timezone: config.business_hours_timezone,
+            },
+          },
+        });
+
+      case "daily_summary":
+        const date =
+          searchParams.get("date") || new Date().toISOString().split("T")[0];
+        const stats = await getDailyStats(date);
+        return NextResponse.json({
+          success: true,
+          data: stats,
+        });
+
+      case "conversations":
+        const lineUserId = searchParams.get("userId");
+        const conversationDate = searchParams.get("date");
+        return await getConversations(lineUserId, conversationDate);
+
+      case "stats":
+        const statsData = await getConversationStats();
+        return NextResponse.json({
+          success: true,
+          data: statsData,
         });
 
       default:
@@ -457,121 +419,196 @@ export async function GET(request) {
   } catch (error) {
     console.error("GET request error:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Internal server error", details: error.message },
       { status: 500 }
     );
   }
 }
 
+// ✅ FIXED: getConversations function
 async function getConversations(lineUserId, date) {
-  const filters = {};
-
-  if (lineUserId) {
-    filters.line_user_id = lineUserId;
-  }
-
-  if (date) {
-    // Get conversations for specific date
-    const startDate = new Date(date);
-    const endDate = new Date(date);
-    endDate.setDate(endDate.getDate() + 1);
-
-    const result = await fetchData("line_admin_conversations", {
-      filters,
-      gte: { created_at: startDate.toISOString() },
-      lt: { created_at: endDate.toISOString() },
-      sort: [{ column: "created_at", ascending: true }],
-    });
-
-    return NextResponse.json(result);
-  }
-
-  const result = await fetchData("line_admin_conversations", {
-    filters,
-    sort: [{ column: "created_at", ascending: false }],
-    limit: 100,
-  });
-
-  return NextResponse.json(result);
-}
-
-async function getDailySummary(date) {
-  const targetDate = date || new Date().toISOString().split("T")[0];
-  const startDate = new Date(targetDate);
-  const endDate = new Date(targetDate);
-  endDate.setDate(endDate.getDate() + 1);
-
-  const result = await fetchData("line_admin_conversations", {
-    gte: { created_at: startDate.toISOString() },
-    lt: { created_at: endDate.toISOString() },
-    sort: [{ column: "created_at", ascending: true }],
-  });
-
-  if (result.success) {
-    const summary = {
-      date: targetDate,
-      total_messages: result.data.length,
-      unique_users: [...new Set(result.data.map((msg) => msg.line_user_id))]
-        .length,
-      admin_responses: result.data.filter((msg) => msg.message_role === "admin")
-        .length,
-      user_messages: result.data.filter((msg) => msg.message_role === "user")
-        .length,
-      conversations: result.data,
+  try {
+    // ✅ Build options object for fetchData
+    const options = {
+      sort: ["created_at", "desc"],
+      limit: 100,
     };
 
-    return NextResponse.json({ success: true, data: summary });
-  }
+    // ✅ Add user filter if provided
+    if (lineUserId) {
+      options.filters = {
+        line_user_id: lineUserId,
+      };
+    }
 
-  return NextResponse.json(result);
+    // ✅ Add date filter if provided
+    if (date) {
+      const startDate = new Date(date);
+      const endDate = new Date(date);
+      endDate.setDate(endDate.getDate() + 1);
+
+      options.gte = {
+        created_at: startDate.toISOString(),
+      };
+
+      // ✅ Use 'lt' instead of 'lte' for the end date to exclude the next day
+      options.lte = {
+        created_at: endDate.toISOString(),
+      };
+    }
+
+    // ✅ FIXED: Use fetchData correctly
+    const result = await fetchData("line_admin_conversations", options);
+
+    if (!result.success) {
+      throw new Error(result.message || "Failed to fetch conversations");
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: result.data || [],
+      meta: {
+        total: result.data?.length || 0,
+        count: result.count || 0,
+        filtered_by: {
+          line_user_id: lineUserId || "all",
+          date: date || "all",
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching conversations:", error);
+    return NextResponse.json(
+      {
+        error: "Failed to fetch conversations",
+        details: error.message,
+      },
+      { status: 500 }
+    );
+  }
 }
 
-async function getAdminPerformance(adminId, date) {
-  // Now get from customers table instead of admin_performance_reports
-  const filters = {};
-
-  if (date) {
+async function getDailyStats(date) {
+  try {
     const startDate = new Date(date);
     const endDate = new Date(date);
     endDate.setDate(endDate.getDate() + 1);
 
-    // Get customers with admin performance data for the date
-    const result = await fetchData("customers", {
-      filters: {
-        last_conversation_date: {
-          gte: startDate.toISOString(),
-          lt: endDate.toISOString(),
-        },
+    // ✅ FIXED: Use the fetchData options parameter correctly
+    const result = await fetchData("line_admin_conversations", {
+      gte: {
+        created_at: startDate.toISOString(),
       },
-      sort: [{ column: "last_conversation_date", ascending: false }],
+      lte: {
+        created_at: endDate.toISOString(),
+      },
     });
 
-    if (result.success) {
-      // Extract admin performance from customer data
-      const adminPerformanceData = result.data.map((customer) => ({
-        customer_id: customer.id,
-        customer_name: customer.customer_name,
-        line_user_id: customer.line_user_id,
-        admin_performance: customer.admin_performance_summary,
-        last_conversation: customer.last_conversation_date,
-      }));
-
-      return NextResponse.json({
-        success: true,
-        date: date,
-        data: adminPerformanceData,
-      });
+    // ✅ Handle the result structure from fetchData
+    if (!result.success) {
+      throw new Error(result.message || "Failed to fetch conversations");
     }
 
-    return NextResponse.json(result);
+    const conversations = result.data || [];
+
+    const stats = {
+      date: date,
+      total_messages: conversations.length,
+      user_messages: conversations.filter((c) => c.message_role === "user")
+        .length,
+      admin_responses: conversations.filter((c) => c.message_role === "admin")
+        .length,
+      unique_users: [...new Set(conversations.map((c) => c.line_user_id))]
+        .length,
+      auto_responses: conversations.filter(
+        (c) => c.message_role === "admin" && c.metadata?.auto_generated === true
+      ).length,
+      response_modes: {},
+    };
+
+    // Count response modes
+    conversations
+      .filter((c) => c.message_role === "admin")
+      .forEach((c) => {
+        const mode = c.metadata?.response_mode || "unknown";
+        stats.response_modes[mode] = (stats.response_modes[mode] || 0) + 1;
+      });
+
+    return stats;
+  } catch (error) {
+    console.error("Error getting daily stats:", error);
+    return {
+      date: date,
+      error: error.message,
+      total_messages: 0,
+      user_messages: 0,
+      admin_responses: 0,
+      unique_users: 0,
+      auto_responses: 0,
+      response_modes: {},
+    };
   }
+}
 
-  // Get recent customers with admin performance data
-  const result = await fetchData("customers", {
-    filters,
-    sort: [{ column: "last_conversation_date", ascending: false }],
-    limit: 50,
-  });
+async function getConversationStats() {
+  try {
+    // ✅ FIXED: Use fetchData correctly
+    const result = await fetchData("line_admin_conversations", {
+      sort: ["created_at", "desc"],
+      limit: 1000,
+    });
 
-  return NextResponse.json(result);
+    if (!result.success) {
+      throw new Error(result.message || "Failed to fetch conversations");
+    }
+
+    const conversations = result.data || [];
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const todayMessages = conversations.filter(
+      (c) => new Date(c.created_at) >= today
+    );
+
+    const yesterdayMessages = conversations.filter((c) => {
+      const msgDate = new Date(c.created_at);
+      return msgDate >= yesterday && msgDate < today;
+    });
+
+    return {
+      total_conversations: conversations.length,
+      today: {
+        total: todayMessages.length,
+        users: todayMessages.filter((c) => c.message_role === "user").length,
+        admins: todayMessages.filter((c) => c.message_role === "admin").length,
+        unique_users: [...new Set(todayMessages.map((c) => c.line_user_id))]
+          .length,
+      },
+      yesterday: {
+        total: yesterdayMessages.length,
+        users: yesterdayMessages.filter((c) => c.message_role === "user")
+          .length,
+        admins: yesterdayMessages.filter((c) => c.message_role === "admin")
+          .length,
+        unique_users: [...new Set(yesterdayMessages.map((c) => c.line_user_id))]
+          .length,
+      },
+      unique_users_total: [...new Set(conversations.map((c) => c.line_user_id))]
+        .length,
+      last_activity: conversations[0]?.created_at || null,
+    };
+  } catch (error) {
+    console.error("Error getting conversation stats:", error);
+    return {
+      error: error.message,
+      total_conversations: 0,
+      today: { total: 0, users: 0, admins: 0, unique_users: 0 },
+      yesterday: { total: 0, users: 0, admins: 0, unique_users: 0 },
+      unique_users_total: 0,
+      last_activity: null,
+    };
+  }
 }
