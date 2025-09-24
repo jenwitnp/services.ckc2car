@@ -1,0 +1,262 @@
+/* ✅ CSS Variables for easy customization */
+:root {
+  --switch-primary: #007AFF;
+  --switch-primary-dark: #0056CC;
+  --switch-success: #34C759;
+  --switch-success-dark: #248A3D;
+  --switch-danger: #FF3B30;
+  --switch-danger-dark: #D70015;
+  --switch-warning: #FF9500;
+  --switch-warning-dark: #CC7700;
+  
+  --switch-gray: #E5E5EA;
+  --switch-gray-dark: #C7C7CC;
+  --switch-white: #FFFFFF;
+  --switch-shadow: rgba(0, 0, 0, 0.1);
+  --switch-shadow-focus: rgba(0, 122, 255, 0.3);
+  
+  /* Default sizes */
+  --switch-width-sm: 32px;
+  --switch-height-sm: 18px;
+  --switch-width-default: 44px;
+  --switch-height-default: 24px;
+  --switch-width-lg: 56px;
+  --switch-height-lg: 32px;
+}
+
+/* ✅ Base switch container */
+.modern-switch {
+  position: relative;
+  display: inline-block;
+  width: var(--switch-width, var(--switch-width-default));
+  height: var(--switch-height, var(--switch-height-default));
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+  overflow: visible; /* Ensure focus ring is visible */
+}
+
+.modern-switch:focus-within {
+  outline: 2px solid var(--switch-shadow-focus);
+  outline-offset: 3px; /* Increased offset to prevent overlap */
+  border-radius: calc(var(--switch-height, var(--switch-height-default)) / 2 + 3px);
+}
+
+/* ✅ Hidden input */
+.modern-switch__input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  margin: 0;
+  padding: 0;
+}
+
+/* ✅ Main slider container */
+.modern-switch__slider {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: calc(var(--switch-height, var(--switch-height-default)) / 2);
+  background: var(--switch-gray);
+  border: 0.5px solid var(--switch-gray-dark); /* Thinner border */
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  padding: 0; /* Ensure no internal padding */
+}
+
+/* ✅ Background track */
+.modern-switch__track {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: inherit;
+  background: linear-gradient(135deg, var(--switch-bg-start, var(--switch-gray)), var(--switch-bg-end, var(--switch-gray-dark)));
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ✅ Switch thumb */
+.modern-switch__thumb {
+  position: absolute;
+  top: 2px;  /* Reduced from 2px for better fit */
+  left: 2px; /* Reduced from 2px for better fit */
+
+  width: calc(var(--switch-height, var(--switch-height-default)) - 5px); /* Changed from -4px to -2px */
+  height: calc(var(--switch-height, var(--switch-height-default)) - 5px); /* Changed from -4px to -2px */
+  border-radius: 50%;
+  background: var(--switch-white);
+  box-shadow: 
+    0 1px 3px rgba(0, 0, 0, 0.12),
+    0 1px 2px rgba(0, 0, 0, 0.08);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 2;
+}
+
+/* ✅ Inner thumb highlight */
+.modern-switch__thumb-inner {
+  position: absolute;
+  top: 0.5px;    /* Reduced margin */
+  left: 0.5px;   /* Reduced margin */
+  right: 0.5px;  /* Reduced margin */
+  bottom: 0.5px; /* Reduced margin */
+  border-radius: 50%;
+  background: linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%);
+  border: 0.5px solid rgba(255, 255, 255, 0.8); /* Added subtle border */
+  transition: all 0.25s ease;
+}
+
+/* ✅ Checked state */
+.modern-switch__input:checked + .modern-switch__slider {
+  background: var(--switch-color, var(--switch-primary));
+  border-color: var(--switch-color-dark, var(--switch-primary-dark));
+}
+
+.modern-switch__input:checked + .modern-switch__slider .modern-switch__track {
+  background: linear-gradient(135deg, var(--switch-color, var(--switch-primary)), var(--switch-color-dark, var(--switch-primary-dark)));
+}
+
+.modern-switch__input:checked + .modern-switch__slider .modern-switch__thumb {
+  transform: translateX(calc(var(--switch-width, var(--switch-width-default)) - var(--switch-height, var(--switch-height-default)) )); /* Changed from +2px to +1px */
+  box-shadow: 
+    0 2px 6px rgba(0, 0, 0, 0.15),
+    0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* ✅ Hover effects */
+.modern-switch:hover .modern-switch__slider {
+  box-shadow: 0 2px 8px var(--switch-shadow);
+}
+
+.modern-switch:hover .modern-switch__thumb {
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.15),
+    0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* ✅ Active/Press effects */
+.modern-switch:active .modern-switch__slider {
+  transform: scale(0.98);
+}
+
+.modern-switch:active .modern-switch__thumb {
+  transform: translateX(1px) scale(0.98); /* Subtle scale */
+}
+
+.modern-switch__input:checked + .modern-switch__slider:active .modern-switch__thumb {
+  transform: translateX(calc(var(--switch-width, var(--switch-width-default)) - var(--switch-height, var(--switch-height-default)) + 1px)) scale(0.98);
+}
+
+/* ✅ Disabled state */
+.modern-switch__input:disabled + .modern-switch__slider {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.modern-switch__input:disabled + .modern-switch__slider .modern-switch__thumb {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.modern-switch__input:disabled + .modern-switch__slider .modern-switch__thumb-inner {
+  background: linear-gradient(145deg, #f5f5f5 0%, #e8e8e8 100%);
+  border-color: rgba(200, 200, 200, 0.5);
+}
+
+/* ✅ Size variants */
+.modern-switch--sm {
+  --switch-width: var(--switch-width-sm);
+  --switch-height: var(--switch-height-sm);
+}
+
+.modern-switch--default {
+  --switch-width: var(--switch-width-default);
+  --switch-height: var(--switch-height-default);
+}
+
+.modern-switch--lg {
+  --switch-width: var(--switch-width-lg);
+  --switch-height: var(--switch-height-lg);
+}
+
+/* ✅ Color variants */
+.modern-switch--primary {
+  --switch-color: var(--switch-primary);
+  --switch-color-dark: var(--switch-primary-dark);
+}
+
+.modern-switch--success {
+  --switch-color: var(--switch-success);
+  --switch-color-dark: var(--switch-success-dark);
+}
+
+.modern-switch--danger {
+  --switch-color: var(--switch-danger);
+  --switch-color-dark: var(--switch-danger-dark);
+}
+
+.modern-switch--warning {
+  --switch-color: var(--switch-warning);
+  --switch-color-dark: var(--switch-warning-dark);
+}
+
+/* ✅ Slim variant */
+.modern-switch--slim {
+  --switch-width: 36px;
+  --switch-height: 20px;
+}
+
+/* ✅ Mini variant */
+.modern-switch--mini {
+  --switch-width: 28px;
+  --switch-height: 16px;
+}
+
+/* ✅ Loading state (optional) */
+.modern-switch--loading .modern-switch__thumb-inner {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* ✅ Dark theme support */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --switch-gray: #48484A;
+    --switch-gray-dark: #3A3A3C;
+    --switch-white: #F2F2F7;
+    --switch-shadow: rgba(0, 0, 0, 0.3);
+  }
+}
+
+/* ✅ Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .modern-switch__slider,
+  .modern-switch__thumb,
+  .modern-switch__track,
+  .modern-switch__thumb-inner {
+    transition: none;
+  }
+}
+
+/* ✅ High contrast mode */
+@media (prefers-contrast: high) {
+  .modern-switch__slider {
+    border-width: 2px;
+  }
+  
+  .modern-switch__input:checked + .modern-switch__slider {
+    border-color: currentColor;
+  }
+}

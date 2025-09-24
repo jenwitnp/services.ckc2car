@@ -5,7 +5,7 @@ import { CarGallery } from "@/app/components/cars/CarGallery";
 import { CarSpecs } from "@/app/components/cars/CarSpecs";
 import { formatNumber } from "@/app/utils/formatNumber";
 import { CarOffers } from "@/app/components/cars/CarOffers";
-import { useCarDetail } from "@/app/hooks/useCarDetail";
+import { useCarDetail } from "@/app/hooks/cars/useCarDetail";
 import { extractCarIdFromSlug } from "@/app/utils/urlUtils";
 import Link from "next/link";
 

@@ -125,7 +125,7 @@ export async function processAIRequest(
  * @returns {Promise<string>} - A natural language summary.
  */
 export async function summarizeData(data, originalUserQuery, summaryType) {
-  console.log("[summary data] : ", data);
+  // console.log("[summary data] : ", data);
   if (!data || data.length === 0) {
     return "ขออภัยค่ะ ไม่พบข้อมูลที่ตรงกับความต้องการของคุณเลย";
   }

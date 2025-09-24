@@ -1,4 +1,4 @@
-import supabase from "../supabase";
+import supabase from "@/app/services/supabase";
 
 export const lineConfigService = {
   // Get current active configuration

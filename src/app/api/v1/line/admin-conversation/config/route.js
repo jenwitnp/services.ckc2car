@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { lineConfigService } from "@/app/services/supabase/lineConfig";
+import { lineConfigService } from "@/app/ai/adapters/line/config/lineConfig";
 
 // GET - Retrieve current configuration
 export async function GET(request) {

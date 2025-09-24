@@ -11,15 +11,15 @@ export function Badge({
     "inline-flex items-center font-medium rounded-full border";
 
   const variantClasses = {
-    default: "border-transparent bg-gray-900 text-gray-50 hover:bg-gray-800",
-    secondary: "border-transparent bg-gray-100 text-gray-900 hover:bg-gray-200",
-    destructive: "border-transparent bg-red-500 text-gray-50 hover:bg-red-600",
-    success: "border-transparent bg-green-500 text-gray-50 hover:bg-green-600",
+    default: "border-transparent bg-main-500 text-main-100 hover:bg-main-800",
+    secondary: "border-transparent bg-main-100 text-main-900 hover:bg-main-200",
+    destructive: "border-transparent bg-red-500 text-main-100 hover:bg-red-600",
+    success: "border-transparent bg-green-500 text-main-100 hover:bg-green-600",
     warning:
-      "border-transparent bg-yellow-500 text-gray-50 hover:bg-yellow-600",
-    outline: "border-gray-200 text-gray-950 hover:bg-gray-100",
+      "border-transparent bg-yellow-500 text-main-100 hover:bg-yellow-600",
+    outline: "border-gray-200 text-main-900 hover:bg-main-100",
     // Custom color classes for your use case
-    "bg-gray-500": "border-transparent bg-gray-500 text-white",
+    "bg-main-500": "border-transparent bg-main-500 text-white",
     "bg-blue-500": "border-transparent bg-blue-500 text-white",
     "bg-green-500": "border-transparent bg-green-500 text-white",
     "bg-purple-500": "border-transparent bg-purple-500 text-white",

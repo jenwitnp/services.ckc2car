@@ -63,7 +63,7 @@ export default function Header() {
   const session = sessionData;
 
   return (
-    <header className="w-full flex flex-col md:flex-row items-start md:items-center justify-between px-4 sm:px-6 md:px-8 py-4 md:py-6 bg-main-900 border-b border-main-800 gap-4">
+    <header className="w-full flex flex-col md:flex-row items-start md:items-center justify-between px-4 sm:px-6 md:px-8 py-4 md:py-6 bg-main-800 border-b border-main-700 gap-4">
       <div className="flex items-center justify-between w-full md:w-auto">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-white">

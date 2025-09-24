@@ -73,7 +73,7 @@ export default function RootLayoutClient(props) {
 
   return (
     <>
-      <main className="flex-1 flex flex-col bg-main-900 w-screen h-fit">
+      <main className="flex-1 flex flex-col bg-main-800 w-screen h-fit">
         <Header />
         <div className="flex p-0 sm:p-4 mx-auto md:p-6">{children}</div>
       </main>

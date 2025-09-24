@@ -5,7 +5,7 @@ import { cn } from "@/app/utils/cn";
 const Card = ({ className, children, ...props }) => (
   <div
     className={cn(
-      "rounded-xl border border-main-200 bg-white shadow-sm transition-shadow hover:shadow-md",
+      "rounded-xl  bg-main-700 shadow-sm transition-shadow hover:shadow-md",
       className
     )}
     {...props}
@@ -23,7 +23,7 @@ const CardHeader = ({ className, children, ...props }) => (
 const CardTitle = ({ className, children, ...props }) => (
   <h3
     className={cn(
-      "text-2xl font-semibold leading-none tracking-tight text-main-900",
+      "text-2xl font-semibold leading-none tracking-tight text-main-200",
       className
     )}
     {...props}

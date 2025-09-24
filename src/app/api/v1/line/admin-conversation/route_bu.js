@@ -1,0 +1,931 @@
+import { NextResponse } from "next/server";
+import { Client, validateSignature } from "@line/bot-sdk";
+import { saveData, fetchData } from "@/app/services/supabase/query.js";
+import { lineConfigService } from "@/app/ai/adapters/line/config/lineConfig";
+import { processLineRequest } from "@/app/ai/adapters/line";
+import { ContextService } from "@/app/ai/services/context/ContextService.js";
+import { LineUtilsService } from "@/app/ai/adapters/line/services/LineUtilsService.js";
+import { templateMatchingService } from "@/app/ai/adapters/line/templateMatching.js";
+
+// ✅ Use unified response builder and helpers
+import {
+  LineResponseBuilder,
+  checkBusinessHours,
+} from "@/app/ai/adapters/line/helper/index.js";
+import { isCarOrPriceRelated } from "@/app/ai/adapters/templateMatching/templateForUseAi";
+
+const config = {
+  channelAccessToken: process.env.LINE_ADMIN_CHANNEL_ACCESS_TOKEN,
+  channelSecret: process.env.LINE_ADMIN_CHANNEL_SECRET,
+};
+
+const client = new Client(config);
+const contextService = new ContextService();
+
+// ✅ Use LINE SDK's built-in signature verification
+function verifySignature(body, signature) {
+  try {
+    return validateSignature(
+      body,
+      process.env.LINE_ADMIN_CHANNEL_SECRET,
+      signature
+    );
+  } catch (error) {
+    console.error("LINE signature verification error:", error);
+    return false;
+  }
+}
+
+export async function POST(request) {
+  try {
+    const body = await request.text();
+    const signature = request.headers.get("x-line-signature");
+
+    if (!verifySignature(body, signature)) {
+      console.error("Invalid LINE signature for admin channel");
+      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+    }
+
+    const events = JSON.parse(body).events;
+
+    for (const event of events) {
+      await handleLineEvent(event);
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("LINE webhook error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+async function handleLineEvent(event) {
+  try {
+    if (event.type !== "message" || event.message.type !== "text") {
+      return;
+    }
+
+    const { source, message, timestamp } = event;
+    const lineUserId = source.userId;
+    const messageContent = message.text;
+
+    console.log("Processing LINE admin message:", {
+      userId: lineUserId,
+      messageLength: messageContent?.length,
+      timestamp: timestamp,
+    });
+
+    // ✅ Get LINE user profile
+    let lineUsername = null;
+    try {
+      const profile = await client.getProfile(lineUserId);
+      const formattedProfile = LineUtilsService.formatUserProfile(profile);
+      lineUsername = formattedProfile.displayName;
+    } catch (error) {
+      console.log("Could not get LINE profile:", error);
+    }
+
+    // ✅ Generate session ID
+    const conversationSessionId = LineUtilsService.generateSessionId(
+      lineUserId,
+      "admin"
+    );
+
+    // ✅ Format and save user message
+    const userMessageData = LineUtilsService.formatMessageForDatabase(
+      {
+        lineUserId: lineUserId,
+        lineUsername: lineUsername,
+        role: "user",
+        content: messageContent,
+        type: message.type,
+        sessionId: conversationSessionId,
+        metadata: {
+          timestamp: new Date(timestamp).toISOString(),
+          message_id: message.id,
+          source_type: source.type,
+          channel_type: "admin",
+          event_type: event.type,
+        },
+      },
+      "customer"
+    );
+
+    await saveConversationMessage(userMessageData);
+
+    // Get admin response configuration
+    const ADMIN_RESPONSE_CONFIG = await getAdminResponseConfig();
+    console.log("auto res config :", ADMIN_RESPONSE_CONFIG);
+
+    // ✅ Process admin response
+    const adminResponse = await processAdminResponse(
+      messageContent,
+      lineUserId,
+      event,
+      ADMIN_RESPONSE_CONFIG
+    );
+
+    // ✅ IMPROVED: Better handling for when no response should be sent
+    if (adminResponse && adminResponse.shouldSend) {
+      // Add configured delay
+      if (ADMIN_RESPONSE_CONFIG.autoResponseDelay > 0) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, ADMIN_RESPONSE_CONFIG.autoResponseDelay * 1000)
+        );
+      }
+
+      // ✅ Format and save admin response
+      const adminMessageData = LineUtilsService.formatMessageForDatabase(
+        {
+          lineUserId: lineUserId,
+          lineUsername: lineUsername,
+          role: "admin",
+          content:
+            adminResponse.text ||
+            adminResponse.response?.text ||
+            adminResponse.response?.altText ||
+            "AI Response",
+          type: "text",
+          sessionId: conversationSessionId,
+          adminId: adminResponse.adminId,
+          adminName: adminResponse.adminName,
+          metadata: {
+            response_timestamp: new Date().toISOString(),
+            auto_generated: adminResponse.autoGenerated || false,
+            response_mode: adminResponse.mode,
+            confidence_score: adminResponse.confidenceScore,
+            channel_type: "admin",
+            response_type: adminResponse.response?.type,
+          },
+        },
+        "admin"
+      );
+
+      await saveConversationMessage(adminMessageData);
+
+      // ✅ Send LINE response
+      console.log("Sending LINE response:", {
+        type: adminResponse.response?.type,
+        hasText: !!adminResponse.response?.text,
+        hasContents: !!adminResponse.response?.contents,
+      });
+
+      await client.replyMessage(event.replyToken, adminResponse.response);
+    } else {
+      // ✅ IMPROVED: Log when no response is sent (especially for hybrid mode)
+      console.log("No automatic response sent:", {
+        mode: ADMIN_RESPONSE_CONFIG.mode,
+        reason: adminResponse?.reason || "No response triggered",
+        responseMode: adminResponse?.mode || "unknown",
+        requiresManualResponse:
+          adminResponse?.mode?.includes("manual") ||
+          adminResponse?.mode?.includes("hybrid") ||
+          adminResponse?.mode?.includes("auto_manual_required"),
+      });
+
+      if (
+        adminResponse?.mode === "hybrid_manual_required" ||
+        adminResponse?.mode === "auto_manual_required"
+      ) {
+        const systemMessage =
+          adminResponse.mode === "auto_manual_required"
+            ? `[AUTO MODE] No suitable template found - Manual admin response required`
+            : `[HYBRID MODE] General query detected - Manual admin response required`;
+
+        const systemLogData = LineUtilsService.formatMessageForDatabase(
+          {
+            lineUserId: lineUserId,
+            lineUsername: lineUsername,
+            role: "system",
+            content: systemMessage,
+            type: "system_log",
+            sessionId: conversationSessionId,
+            adminId:
+              adminResponse.mode === "auto_manual_required"
+                ? "auto-system"
+                : "hybrid-system",
+            adminName:
+              adminResponse.mode === "auto_manual_required"
+                ? "Auto Mode System"
+                : "Hybrid Mode System",
+            metadata: {
+              response_timestamp: new Date().toISOString(),
+              auto_generated: false,
+              response_mode: adminResponse.mode,
+              channel_type: "admin",
+              response_type: "no_response",
+              query_type: adminResponse.queryType,
+              requires_manual: true,
+              template_analysis: adminResponse.templateAnalysis, // For auto mode
+            },
+          },
+          "system"
+        );
+
+        await saveConversationMessage(systemLogData);
+      }
+    }
+  } catch (error) {
+    console.error("Error handling LINE event:", error);
+
+    // ✅ Emergency fallback response (only for non-hybrid errors)
+    try {
+      const fallbackResponse = LineResponseBuilder.createErrorResponse(
+        "ขออภัยครับ เกิดข้อผิดพลาดในระบบ กรุณาลองใหม่อีกครั้งครับ"
+      );
+      await client.replyMessage(event.replyToken, fallbackResponse);
+    } catch (fallbackError) {
+      console.error("Even fallback response failed:", fallbackError);
+    }
+  }
+}
+
+// ✅ Save function with better error handling
+async function saveConversationMessage(messageData) {
+  try {
+    console.log("Saving message to line_admin_conversations:", {
+      line_user_id: messageData.line_user_id,
+      message_role: messageData.message_role,
+      message_type: messageData.message_type,
+      conversation_session_id: messageData.conversation_session_id,
+      has_admin_id: !!messageData.admin_id,
+      has_admin_name: !!messageData.admin_name,
+      metadata_keys: Object.keys(messageData.metadata || {}),
+    });
+
+    const result = await saveData("line_admin_conversations", messageData);
+
+    console.log("Message saved successfully:", result);
+    return result;
+  } catch (error) {
+    console.error("Error saving conversation message:", error);
+    console.error("Message data:", messageData);
+  }
+}
+
+async function getAdminResponseConfig() {
+  try {
+    const config = await lineConfigService.getConfig();
+
+    console.log("[Config] Loaded configuration:", {
+      mode: config.mode,
+      enableSmartResponse: config.enable_smart_response,
+      businessHoursEnabled: config.business_hours_enabled,
+      hasTemplates: !!(config.template_greeting || config.template_car_inquiry),
+    });
+
+    return {
+      mode: config.mode || "manual",
+      autoResponseDelay: config.auto_response_delay || 0,
+      enableSmartResponse: config.enable_smart_response || false,
+      businessHours: {
+        enabled: config.business_hours_enabled || false,
+        start: config.business_hours_start?.substring(0, 5) || "09:00",
+        end: config.business_hours_end?.substring(0, 5) || "18:00",
+        timezone: config.business_hours_timezone || "Asia/Bangkok",
+        afterHoursMessage:
+          config.business_hours_after_hours_message ||
+          "ขอบคุณสำหรับข้อความของคุณ ขณะนี้อยู่นอกเวลาทำการ เราจะติดต่อกลับในเวลาทำการ (9:00-18:00 น.)",
+      },
+      // ✅ Include templates for matching
+      templates: {
+        greeting:
+          config.template_greeting ||
+          "สวัสดีครับ/ค่ะ ยินดีต้อนรับสู่ CKC Car Services มีอะไรให้เราช่วยเหลือไหมครับ/ค่ะ",
+        carInquiry:
+          config.template_car_inquiry ||
+          "ขอบคุณที่สนใจรถของเราครับ/ค่ะ เรามีรถหลากหลายรุ่นให้เลือก ท่านสนใจรถรุ่นไหนเป็นพิเศษไหมครับ/ค่ะ",
+        pricing:
+          config.template_pricing ||
+          "เรื่องราคารถ เราจะแจ้งราคาพิเศษให้ท่านครับ/ค่ะ ขอเบอร์โทรติดต่อหน่อยได้ไหมครับ/ค่ะ",
+        contact:
+          config.template_contact ||
+          "แอดมินจะติดต่อกลับไปให้ท่านในไม่ช้าครับ/ค่ะ หรือท่านสะดวกให้เราโทรหาเมื่อไหร่ครับ/ค่ะ",
+      },
+    };
+  } catch (error) {
+    console.error("Error getting admin response config:", error);
+    return {
+      mode: "manual",
+      autoResponseDelay: 0,
+      enableSmartResponse: false,
+      businessHours: {
+        enabled: false,
+        start: "09:00",
+        end: "18:00",
+        timezone: "Asia/Bangkok",
+        afterHoursMessage:
+          "ขอบคุณสำหรับข้อความของคุณ ขณะนี้อยู่นอกเวลาทำการ เราจะติดต่อกลับในเวลาทำการ (9:00-18:00 น.)",
+      },
+      templates: {
+        greeting: "สวัสดีครับ/ค่ะ ยินดีต้อนรับสู่ CKC Car Services",
+        carInquiry: "ขอบคุณที่สนใจรถของเราครับ/ค่ะ",
+        pricing: "เรื่องราคารถ เราจะแจ้งราคาพิเศษให้ท่านครับ/ค่ะ",
+        contact: "แอดมินจะติดต่อกลับไปให้ท่านครับ/ค่ะ",
+      },
+    };
+  }
+}
+
+async function processAdminResponse(messageContent, lineUserId, event, config) {
+  try {
+    console.log("[Admin Response] Processing with config:", {
+      mode: config.mode,
+      enableSmartResponse: config.enableSmartResponse,
+      businessHoursEnabled: config.businessHours.enabled,
+    });
+
+    // Check business hours for other modes
+    if (config.businessHours.enabled) {
+      const isWithinHours = checkBusinessHours(config.businessHours);
+
+      console.log("[Business Hours] Check result:", {
+        isWithinHours,
+        start: config.businessHours.start,
+        end: config.businessHours.end,
+        timezone: config.businessHours.timezone,
+      });
+
+      if (isWithinHours) {
+        return {
+          shouldSend: true,
+          // ✅ Use unified response builder
+          response: LineResponseBuilder.createBusinessHoursResponse(
+            config.businessHours.afterHoursMessage,
+            config.businessHours
+          ),
+          autoGenerated: true,
+          mode: "business_hours",
+          adminId: "business-hours-bot",
+          adminName: "Business Hours Bot",
+        };
+      }
+    }
+
+    // Handle manual mode with template matching
+    if (config.mode === "manual") {
+      console.log(
+        "[Admin Response] Manual mode - analyzing for template suggestions"
+      );
+
+      const templateAnalysis = templateMatchingService.analyzeMessage(
+        messageContent,
+        config.templates || {}
+      );
+
+      console.log("[Template Analysis] Results:", {
+        bestMatch: templateAnalysis.bestMatch.type,
+        confidence: templateAnalysis.bestMatch.confidence,
+        score: templateAnalysis.bestMatch.score,
+        shouldUseTemplate: templateAnalysis.suggestion.shouldUseTemplate,
+      });
+
+      if (
+        templateAnalysis.bestMatch.confidence === "high" &&
+        templateAnalysis.bestMatch.score > 0.6
+      ) {
+        console.log(
+          "[Template Analysis] High confidence match - sending template response"
+        );
+
+        return {
+          shouldSend: true,
+          // ✅ Use unified response builder
+          response: LineResponseBuilder.createTemplateResponse(
+            templateAnalysis.bestMatch.template,
+            templateAnalysis.bestMatch.type
+          ),
+          text: templateAnalysis.bestMatch.template,
+          autoGenerated: true,
+          mode: "manual_template",
+          templateType: templateAnalysis.bestMatch.type,
+          confidence: templateAnalysis.bestMatch.score,
+          adminId: "template-bot",
+          adminName: "Template Assistant",
+        };
+      }
+
+      console.log(
+        "[Template Analysis] Low/Medium confidence - manual admin response needed"
+      );
+      return { shouldSend: false };
+    }
+
+    // ✅ FIXED: Auto mode - Only respond if template matches well
+    if (config.mode === "auto") {
+      console.log("[Admin Response] Auto mode - using template matching");
+
+      const templateAnalysis = templateMatchingService.analyzeMessage(
+        messageContent,
+        config.templates || {}
+      );
+
+      console.log("[Auto Mode] Template analysis results:", {
+        bestMatch: templateAnalysis.bestMatch.type,
+        confidence: templateAnalysis.bestMatch.confidence,
+        score: templateAnalysis.bestMatch.score,
+        shouldUseTemplate: templateAnalysis.suggestion.shouldUseTemplate,
+      });
+
+      // ✅ FIXED: Only respond if template confidence is good enough
+      if (
+        templateAnalysis.bestMatch.confidence !== "none" &&
+        templateAnalysis.bestMatch.score > 0.3
+      ) {
+        console.log(
+          "[Auto Mode] Good template match - Using template response:",
+          templateAnalysis.bestMatch.type
+        );
+
+        return {
+          shouldSend: true,
+          response: LineResponseBuilder.createTemplateResponse(
+            templateAnalysis.bestMatch.template,
+            templateAnalysis.bestMatch.type
+          ),
+          text: templateAnalysis.bestMatch.template,
+          autoGenerated: true,
+          mode: "auto_template",
+          templateType: templateAnalysis.bestMatch.type,
+          confidence: templateAnalysis.bestMatch.score,
+          adminId: "auto-template-bot",
+          adminName: "Auto Template Bot",
+        };
+      } else {
+        // ✅ FIXED: No good template match - Do NOT respond (like hybrid mode)
+        console.log(
+          "[Auto Mode] No good template match - No auto response, waiting for manual admin response"
+        );
+
+        return {
+          shouldSend: false, // ✅ Do not send any automatic response
+          mode: "auto_manual_required",
+          queryType: "no_template_match",
+          reason: "No suitable template found, manual admin response required",
+          templateAnalysis: {
+            bestMatch: templateAnalysis.bestMatch.type,
+            confidence: templateAnalysis.bestMatch.confidence,
+            score: templateAnalysis.bestMatch.score,
+          },
+          adminId: null,
+          adminName: null,
+        };
+      }
+    }
+
+    // ✅ HYBRID MODE - Smart decision between Template and AI
+    if (config.mode === "hybrid") {
+      try {
+        console.log(
+          "[Admin Response] Hybrid mode - analyzing message for AI vs No Response"
+        );
+
+        // ✅ Check if message is about cars or pricing (use AI for these)
+        const shouldUseAI = isCarOrPriceRelated(messageContent);
+
+        console.log("[Hybrid Mode] Message analysis:", {
+          messagePreview: messageContent.substring(0, 50) + "...",
+          shouldUseAI,
+          useCase: shouldUseAI ? "AI_RESPONSE" : "NO_RESPONSE",
+        });
+
+        if (shouldUseAI) {
+          // ✅ Use AI for car/price related queries
+          console.log(
+            "[Hybrid Mode] Car/Price query detected - Using AI response"
+          );
+
+          const baseContext = await contextService.getUserContext(lineUserId);
+          const context = {
+            ...baseContext,
+            userId: lineUserId,
+            platform: "line",
+            channel: "admin",
+            isAdminChannel: true,
+            hybridMode: true,
+            queryType: "car_price_inquiry",
+            adminConfig: config,
+          };
+
+          console.log("[Hybrid Mode] AI Context prepared:", {
+            userId: lineUserId,
+            platform: context.platform,
+            channel: context.channel,
+            queryType: context.queryType,
+            hasCarData: !!context.carData,
+          });
+
+          const aiResponse = await processLineRequest(messageContent, context);
+          console.log("[Hybrid] AI response:", aiResponse);
+
+          if (aiResponse) {
+            // ✅ Validate AI response
+            if (!LineResponseBuilder.validateResponse(aiResponse)) {
+              console.warn(
+                "[Hybrid Mode] Invalid AI response, no fallback in hybrid mode"
+              );
+              throw new Error("Invalid AI response format");
+            }
+
+            let responseText = null;
+            if (aiResponse.type === "text") {
+              responseText = aiResponse.text;
+            } else if (aiResponse.type === "flex") {
+              responseText = aiResponse.altText || "Flex message response";
+            }
+
+            console.log("[Hybrid Mode] AI response sent successfully:", {
+              responseType: aiResponse.type,
+              hasText: !!responseText,
+              textLength: responseText?.length || 0,
+            });
+
+            return {
+              shouldSend: true,
+              response: aiResponse,
+              text: responseText,
+              autoGenerated: true,
+              mode: "hybrid_ai",
+              confidenceScore: 0.9,
+              queryType: "car_price_inquiry",
+              adminId: "hybrid-ai-assistant",
+              adminName: "Hybrid AI Assistant",
+            };
+          } else {
+            console.warn(
+              "[Hybrid Mode] AI returned no response, hybrid mode will not respond"
+            );
+            throw new Error("AI response is null");
+          }
+        } else {
+          // ✅ FIXED: General queries - Do NOT respond (let admin handle manually)
+          console.log(
+            "[Hybrid Mode] General query detected - No auto response, waiting for manual admin response"
+          );
+
+          return {
+            shouldSend: false, // ✅ Do not send any automatic response
+            mode: "hybrid_manual_required",
+            queryType: "general_inquiry",
+            reason: "Non-car/price query requires manual admin response",
+            adminId: null,
+            adminName: null,
+          };
+        }
+      } catch (hybridError) {
+        console.error("[Hybrid Mode] Error:", hybridError);
+
+        // ✅ FIXED: In hybrid mode, if AI fails, do not send fallback responses
+        console.log(
+          "[Hybrid Mode] AI error occurred - No fallback response in hybrid mode"
+        );
+
+        return {
+          shouldSend: false, // ✅ Do not send any response on error
+          mode: "hybrid_ai_error",
+          error: hybridError.message,
+          reason: "AI error in hybrid mode, manual admin response required",
+          adminId: null,
+          adminName: null,
+        };
+      }
+    }
+
+    // AI mode - use existing LINE adapter
+    if (config.mode === "ai" && config.enableSmartResponse) {
+      try {
+        console.log("[Admin Response] AI mode - processing with LINE adapter");
+
+        const baseContext = await contextService.getUserContext(lineUserId);
+        const context = {
+          ...baseContext,
+          userId: lineUserId,
+          platform: "line",
+          channel: "admin",
+          isAdminChannel: true,
+          //   templateSuggestion: templateAnalysis,
+          adminConfig: config,
+        };
+
+        const aiResponse = await processLineRequest(messageContent, context);
+
+        if (aiResponse) {
+          // ✅ Validate response using unified builder
+          if (!LineResponseBuilder.validateResponse(aiResponse)) {
+            console.warn("[AI Mode] Invalid AI response, using fallback");
+            throw new Error("Invalid AI response format");
+          }
+
+          let responseText = null;
+          if (aiResponse.type === "text") {
+            responseText = aiResponse.text;
+          } else if (aiResponse.type === "flex") {
+            responseText = aiResponse.altText || "Flex message response";
+          }
+
+          return {
+            shouldSend: true,
+            response: aiResponse,
+            text: responseText,
+            autoGenerated: true,
+            mode: "ai_smart",
+            confidenceScore: 0.9,
+            // templateContext: templateAnalysis.bestMatch.type,
+            adminId: "ai-assistant",
+            adminName: "AI Assistant",
+          };
+        }
+      } catch (aiError) {
+        console.error("[AI Mode] Error:", aiError);
+
+        // Fallback to template matching
+        const templateAnalysis = templateMatchingService.analyzeMessage(
+          messageContent,
+          config.templates || {}
+        );
+
+        if (templateAnalysis.bestMatch.confidence !== "none") {
+          return {
+            shouldSend: true,
+            // ✅ Use unified response builder
+            response: LineResponseBuilder.createTemplateResponse(
+              templateAnalysis.bestMatch.template,
+              templateAnalysis.bestMatch.type
+            ),
+            text: templateAnalysis.bestMatch.template,
+            autoGenerated: true,
+            mode: "ai_fallback_template",
+            templateType: templateAnalysis.bestMatch.type,
+            adminId: "ai-fallback-bot",
+            adminName: "AI Fallback Bot",
+          };
+        }
+      }
+    }
+
+    // Ultimate fallback
+    const defaultText =
+      "สวัสดีครับ ขอบคุณที่ติดต่อเรา ทีมงานจะติดต่อกลับไปในเร็วๆ นี้นะครับ";
+    return {
+      shouldSend: true,
+      // ✅ Use unified response builder
+      response: LineResponseBuilder.createTextResponse(defaultText),
+      text: defaultText,
+      autoGenerated: true,
+      mode: "fallback",
+      adminId: "fallback-bot",
+      adminName: "Fallback Bot",
+    };
+  } catch (error) {
+    console.error("Error processing admin response:", error);
+    return { shouldSend: false };
+  }
+}
+
+// ✅ GET endpoints
+export async function GET(request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const action = searchParams.get("action");
+
+    switch (action) {
+      case "config":
+        const config = await lineConfigService.getConfig();
+        return NextResponse.json({
+          success: true,
+          config: {
+            mode: config.mode,
+            autoResponseDelay: config.auto_response_delay,
+            enableSmartResponse: config.enable_smart_response,
+            businessHours: {
+              enabled: config.business_hours_enabled,
+              start: config.business_hours_start,
+              end: config.business_hours_end,
+              timezone: config.business_hours_timezone,
+            },
+          },
+        });
+
+      case "daily_summary":
+        const date =
+          searchParams.get("date") || new Date().toISOString().split("T")[0];
+        const stats = await getDailyStats(date);
+        return NextResponse.json({
+          success: true,
+          data: stats,
+        });
+
+      case "conversations":
+        const lineUserId = searchParams.get("userId");
+        const conversationDate = searchParams.get("date");
+        return await getConversations(lineUserId, conversationDate);
+
+      case "stats":
+        const statsData = await getConversationStats();
+        return NextResponse.json({
+          success: true,
+          data: statsData,
+        });
+
+      default:
+        return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+    }
+  } catch (error) {
+    console.error("GET request error:", error);
+    return NextResponse.json(
+      { error: "Internal server error", details: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+// ✅ FIXED: getConversations function
+async function getConversations(lineUserId, date) {
+  try {
+    // ✅ Build options object for fetchData
+    const options = {
+      sort: ["created_at", "desc"],
+      limit: 100,
+    };
+
+    // ✅ Add user filter if provided
+    if (lineUserId) {
+      options.filters = {
+        line_user_id: lineUserId,
+      };
+    }
+
+    // ✅ Add date filter if provided
+    if (date) {
+      const startDate = new Date(date);
+      const endDate = new Date(date);
+      endDate.setDate(endDate.getDate() + 1);
+
+      options.gte = {
+        created_at: startDate.toISOString(),
+      };
+
+      // ✅ Use 'lt' instead of 'lte' for the end date to exclude the next day
+      options.lte = {
+        created_at: endDate.toISOString(),
+      };
+    }
+
+    // ✅ FIXED: Use fetchData correctly
+    const result = await fetchData("line_admin_conversations", options);
+
+    if (!result.success) {
+      throw new Error(result.message || "Failed to fetch conversations");
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: result.data || [],
+      meta: {
+        total: result.data?.length || 0,
+        count: result.count || 0,
+        filtered_by: {
+          line_user_id: lineUserId || "all",
+          date: date || "all",
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching conversations:", error);
+    return NextResponse.json(
+      {
+        error: "Failed to fetch conversations",
+        details: error.message,
+      },
+      { status: 500 }
+    );
+  }
+}
+
+async function getDailyStats(date) {
+  try {
+    const startDate = new Date(date);
+    const endDate = new Date(date);
+    endDate.setDate(endDate.getDate() + 1);
+
+    // ✅ FIXED: Use the fetchData options parameter correctly
+    const result = await fetchData("line_admin_conversations", {
+      gte: {
+        created_at: startDate.toISOString(),
+      },
+      lte: {
+        created_at: endDate.toISOString(),
+      },
+    });
+
+    // ✅ Handle the result structure from fetchData
+    if (!result.success) {
+      throw new Error(result.message || "Failed to fetch conversations");
+    }
+
+    const conversations = result.data || [];
+
+    const stats = {
+      date: date,
+      total_messages: conversations.length,
+      user_messages: conversations.filter((c) => c.message_role === "user")
+        .length,
+      admin_responses: conversations.filter((c) => c.message_role === "admin")
+        .length,
+      unique_users: [...new Set(conversations.map((c) => c.line_user_id))]
+        .length,
+      auto_responses: conversations.filter(
+        (c) => c.message_role === "admin" && c.metadata?.auto_generated === true
+      ).length,
+      response_modes: {},
+    };
+
+    // Count response modes
+    conversations
+      .filter((c) => c.message_role === "admin")
+      .forEach((c) => {
+        const mode = c.metadata?.response_mode || "unknown";
+        stats.response_modes[mode] = (stats.response_modes[mode] || 0) + 1;
+      });
+
+    return stats;
+  } catch (error) {
+    console.error("Error getting daily stats:", error);
+    return {
+      date: date,
+      error: error.message,
+      total_messages: 0,
+      user_messages: 0,
+      admin_responses: 0,
+      unique_users: 0,
+      auto_responses: 0,
+      response_modes: {},
+    };
+  }
+}
+
+async function getConversationStats() {
+  try {
+    // ✅ FIXED: Use fetchData correctly
+    const result = await fetchData("line_admin_conversations", {
+      sort: ["created_at", "desc"],
+      limit: 1000,
+    });
+
+    if (!result.success) {
+      throw new Error(result.message || "Failed to fetch conversations");
+    }
+
+    const conversations = result.data || [];
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const todayMessages = conversations.filter(
+      (c) => new Date(c.created_at) >= today
+    );
+
+    const yesterdayMessages = conversations.filter((c) => {
+      const msgDate = new Date(c.created_at);
+      return msgDate >= yesterday && msgDate < today;
+    });
+
+    return {
+      total_conversations: conversations.length,
+      today: {
+        total: todayMessages.length,
+        users: todayMessages.filter((c) => c.message_role === "user").length,
+        admins: todayMessages.filter((c) => c.message_role === "admin").length,
+        unique_users: [...new Set(todayMessages.map((c) => c.line_user_id))]
+          .length,
+      },
+      yesterday: {
+        total: yesterdayMessages.length,
+        users: yesterdayMessages.filter((c) => c.message_role === "user")
+          .length,
+        admins: yesterdayMessages.filter((c) => c.message_role === "admin")
+          .length,
+        unique_users: [...new Set(yesterdayMessages.map((c) => c.line_user_id))]
+          .length,
+      },
+      unique_users_total: [...new Set(conversations.map((c) => c.line_user_id))]
+        .length,
+      last_activity: conversations[0]?.created_at || null,
+    };
+  } catch (error) {
+    console.error("Error getting conversation stats:", error);
+    return {
+      error: error.message,
+      total_conversations: 0,
+      today: { total: 0, users: 0, admins: 0, unique_users: 0 },
+      yesterday: { total: 0, users: 0, admins: 0, unique_users: 0 },
+      unique_users_total: 0,
+      last_activity: null,
+    };
+  }
+}

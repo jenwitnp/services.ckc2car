@@ -1,4 +1,4 @@
-import { LineUtilsService } from "./LineUtilsService.js";
+import { LineUtilsService } from "../../ai/adapters/line/services/LineUtilsService.js";
 
 /**
  * Shared LINE response builder for both admin and customer chat

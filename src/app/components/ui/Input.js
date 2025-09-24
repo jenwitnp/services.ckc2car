@@ -66,7 +66,7 @@ const Input = forwardRef(
             type={inputType}
             className={cn(
               // Base styles
-              "w-full rounded-lg text-main-700 border transition-all duration-200",
+              "w-full bg-main-800 rounded-lg text-main-200 border transition-all duration-200",
               "placeholder:text-main-400 focus:outline-none focus:ring-2 focus:ring-offset-0",
 
               // Padding with/without icons
@@ -75,14 +75,14 @@ const Input = forwardRef(
               Icon && iconPosition === "right" ? "pr-10" : "",
 
               // Size
-              "h-11 text-sm",
+              "h-10 text-sm",
 
               // States
               hasError
                 ? "border-danger-300 focus:border-danger-500 focus:ring-danger-500"
                 : "border-main-600 focus:border-secondary-500 focus:ring-secondary-500",
 
-              disabled && "bg-gray-50 text-main-400 cursor-not-allowed",
+              disabled && "bg-main-100 text-main-400 cursor-not-allowed",
 
               className
             )}

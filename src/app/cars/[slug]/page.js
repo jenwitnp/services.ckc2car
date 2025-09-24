@@ -3,7 +3,7 @@
 import React from "react";
 import { useParams, notFound } from "next/navigation";
 import { extractCarIdFromSlug } from "@/app/utils/urlUtils";
-import { useCarDetail } from "@/app/hooks/useCarDetail";
+import { useCarDetail } from "@/app/hooks/cars/useCarDetail";
 import {
   Loader2,
   AlertCircle,
@@ -11,12 +11,6 @@ import {
   AlignLeft,
   Edit,
   MapPin,
-  Calendar,
-  Fuel,
-  Settings,
-  Eye,
-  Heart,
-  Share2,
   ArrowLeft,
   Star,
   Phone,
@@ -26,6 +20,7 @@ import { CarGallery } from "@/app/components/cars/CarGallery";
 import { CarSpecs } from "@/app/components/cars/CarSpecs";
 import { CarOffers } from "@/app/components/cars/CarOffers";
 import { formatNumber } from "@/app/utils/formatNumber";
+import useCarImages from "@/app/hooks/cars/useCarImages";
 
 export default function CarDetailPage() {
   const params = useParams();
@@ -37,11 +32,18 @@ export default function CarDetailPage() {
     includeRelated: false,
   });
 
+  // ✅ Get images from your useCarImages hook
+  const {
+    images,
+    loading: loadingImages,
+    error: imageError,
+  } = useCarImages(carId);
+
   if (!carId) notFound();
 
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center min-h-screen bg-main-900">
+      <div className="flex justify-center items-center min-h-screen bg-main-800">
         <div className="text-center">
           <Loader2 className="h-12 w-12 text-success-400 animate-spin mx-auto mb-4" />
           <p className="text-main-300 text-lg">กำลังโหลดข้อมูลรถยนต์...</p>
@@ -52,7 +54,7 @@ export default function CarDetailPage() {
 
   if (isError || !car) {
     return (
-      <div className="flex justify-center items-center min-h-screen bg-main-900">
+      <div className="flex justify-center items-center min-h-screen bg-main-800">
         <div className="text-center max-w-md mx-auto p-8 bg-main-800 rounded-2xl shadow-xl border border-main-700">
           <AlertCircle className="h-16 w-16 text-danger-400 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-main-100 mb-2">
@@ -74,20 +76,21 @@ export default function CarDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-main-900">
+    <div className="min-h-screen bg-main-800">
       {/* Header Navigation */}
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left Column - Main Content */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Car Gallery */}
+            {/* ✅ Updated Car Gallery */}
             <div className="bg-main-800 rounded-2xl shadow-xl overflow-hidden border border-main-700">
               <CarGallery
-                thumbnail={car.thumbnail}
-                images={car.images}
-                title={car.title}
+                images={images}
+                loading={loadingImages}
+                error={imageError}
+                title={car?.title || "Car Images"}
+                carId={carId}
               />
             </div>
 
@@ -108,14 +111,14 @@ export default function CarDetailPage() {
                   <div className="text-3xl md:text-4xl font-bold text-success-400">
                     ฿{formatNumber(car.price)}
                   </div>
-                  <div className="flex items-center mt-2">
+                  {/* <div className="flex items-center mt-2">
                     <div className="flex text-warning-400">
                       {[...Array(5)].map((_, i) => (
                         <Star key={i} className="w-4 h-4 fill-current" />
                       ))}
                     </div>
                     <span className="text-main-300 text-sm ml-2">(4.8)</span>
-                  </div>
+                  </div> */}
                 </div>
                 <div className="text-right">
                   <div className="text-sm text-main-400 mb-1">รหัสรถ</div>
@@ -163,9 +166,11 @@ export default function CarDetailPage() {
               <div className="p-6">
                 <CarSpecs specs={car} />
                 <div className="flex justify-start items-center gap-2 mt-6">
-                  <MapPin className="w-5 h-5 text-amber-600 dark:text-amber-500" />
+                  <div className="w-10 h-10 flex justify-center items-center ">
+                    <MapPin className="w-5 h-5 text-main-400 dark:text-main-500" />
+                  </div>
                   <div>
-                    <p className="text-sm text-main-500 dark:text-main-400">
+                    <p className="text-sm text-main-500 mb-1 font-medium">
                       รถจอดสาขา
                     </p>
                     <p className="text-gray-900 dark:text-white font-medium">
@@ -223,7 +228,7 @@ export default function CarDetailPage() {
               </div>
 
               {/* Contact CTA */}
-              <div className="bg-gradient-to-br from-success-600 to-success-700 rounded-2xl p-6 text-white shadow-xl border border-success-500">
+              {/* <div className="bg-gradient-to-br from-success-600 to-success-700 rounded-2xl p-6 text-white shadow-xl border border-success-500">
                 <h3 className="text-xl font-bold mb-2 flex items-center">
                   <MessageCircle className="w-6 h-6 mr-2" />
                   สนใจรถคันนี้?
@@ -241,7 +246,7 @@ export default function CarDetailPage() {
                     ส่งข้อความ
                   </button>
                 </div>
-              </div>
+              </div> */}
 
               {/* Dealer Info Card */}
               <div className="bg-main-800 rounded-2xl shadow-xl p-6 border border-main-700">
