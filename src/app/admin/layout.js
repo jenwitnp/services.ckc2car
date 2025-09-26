@@ -1,5 +1,5 @@
 import "./globals.css";
-import ClientLayout from "./components/ClientLayout";
+import ClientLayout from "../components/ClientLayout";
 
 // ✅ This can be exported from server components
 export const metadata = {
@@ -14,7 +14,9 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="th">
-      <body className=" mx-auto h-screen overflow-auto">{children}</body>
+      <body className="flex mx-auto h-screen overflow-auto">
+        <ClientLayout>{children}</ClientLayout>
+      </body>
     </html>
   );
 }
