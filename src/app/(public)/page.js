@@ -10,6 +10,7 @@ import CarListingSection from "@/app/(public)/components/sections/CarListingSect
 import LatestCarsSection from "@/app/(public)/components/sections/LatestCarsSection";
 import WhyChooseUsSection from "@/app/(public)/components/sections/WhyChooseUsSection";
 import Footer from "@/app/(public)/components/layout/Footer";
+import CustomerChatWidget from "@/app/(public)/components/ui/CustomerChatWidget";
 
 export default function HomePage() {
   return (
@@ -43,6 +44,9 @@ export default function HomePage() {
 
       {/* Footer */}
       <Footer />
+
+      {/* Customer Chat Widget */}
+      <CustomerChatWidget />
     </div>
   );
 }
